@@ -1,0 +1,17 @@
+tier_defaults:
+  cheap:
+    backend: ollama
+    fallback_backend: openai
+  balanced:
+    backend: openai
+  premium:
+    backend: claude
+
+weights:
+  latency: 0.4
+  cost: 0.3
+  quality: 0.3
+
+budgets:
+  daily_usd_soft_cap: 5.0
+  daily_usd_hard_cap: 15.0
