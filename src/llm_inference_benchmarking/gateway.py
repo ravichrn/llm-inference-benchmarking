@@ -6,17 +6,16 @@ import os
 import sqlite3
 
 from dotenv import load_dotenv
-
-load_dotenv()
-
 from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from pydantic import BaseModel, Field
 from starlette.responses import Response
 
 from llm_inference_benchmarking.client import GatewayClient
 from llm_inference_benchmarking.ledger import get_ledger_db_path
 from llm_inference_benchmarking.types import GatewayRequest
+
+load_dotenv()
 
 app = FastAPI(title="Inference Gateway", version="0.1.0")
 _api_client = GatewayClient()

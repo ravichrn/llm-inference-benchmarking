@@ -69,7 +69,11 @@ async def _run_level(
                 client,
                 url,
                 headers,
-                {"prompt": _DEFAULT_PROMPTS[i % len(_DEFAULT_PROMPTS)], "tier": tier, "role": "agent"},  # noqa: E501
+                {
+                    "prompt": _DEFAULT_PROMPTS[i % len(_DEFAULT_PROMPTS)],
+                    "tier": tier,
+                    "role": "agent",
+                },
                 semaphore,
             )
             for i in range(total)

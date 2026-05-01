@@ -10,10 +10,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 from llm_inference_benchmarking.client import GatewayClient
 from llm_inference_benchmarking.types import GatewayRequest
+
+load_dotenv()
 
 _DEFAULT_PROMPTS = [
     "Summarize why retrieval-augmented generation reduces hallucination.",

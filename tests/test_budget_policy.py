@@ -10,7 +10,9 @@ class _PolicyStub:
 
 
 def test_hard_cap_blocks_requests(monkeypatch):
-    monkeypatch.setattr("llm_inference_benchmarking.client.get_today_success_cost_usd", lambda: 20.0)
+    monkeypatch.setattr(
+        "llm_inference_benchmarking.client.get_today_success_cost_usd", lambda: 20.0
+    )
     monkeypatch.setenv("GATEWAY_DAILY_USD_HARD_CAP", "15")
     monkeypatch.setenv("GATEWAY_DAILY_USD_SOFT_CAP", "5")
     with pytest.raises(RuntimeError):

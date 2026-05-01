@@ -1,6 +1,5 @@
 # llm-inference-benchmarking
 
-[![CI](https://github.com/ravichrn/llm-inference-benchmarking/actions/workflows/ci.yml/badge.svg)](https://github.com/ravichrn/llm-inference-benchmarking/actions/workflows/ci.yml)
 
 Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, cost, and quality tradeoffs across routing tiers (gateway benchmark) and quantization formats (Modal GPU benchmark).
 
@@ -76,7 +75,7 @@ GatewayClient         ←─ LangChain adapters (OpenAI / Claude / Ollama / vLLM
 | **int8** | 30,850 | 31,132 | 8.3 | 12,556 | 5.100 | — | $0.0368 |
 | **awq** | 37,273 | 37,618 | 3.8 | 5,464 | 5.347 | — | $0.0804 |
 
-> ¹ vLLM pre-allocates a managed memory pool; `torch.cuda.memory_reserved()` reports 0 — actual GPU usage is ~16 GB.  
+> ¹ vLLM pre-allocates a managed memory pool; `torch.cuda.memory_reserved()` reports 0 — actual GPU usage is ~16 GB.
 > ² vLLM does not expose per-token NLL, so perplexity cannot be computed.
 
 > **Note on MMLU (archived results):** The results file was produced with a bug where the accuracy denominator used 100 (full list) but only 50 questions were evaluated, halving the reported score for the second batch of modes. This is now fixed — new runs will correctly report accuracy over 50 questions. The perplexity values in the table are unaffected and remain the authoritative quality signal.
@@ -245,7 +244,16 @@ Gateway scales linearly from 0.58 req/s (c=1) to 8.42 req/s (c=20) with no error
 
 ## Dev
 
+Pre-commit hooks run ruff lint and format automatically on every commit:
+
 ```bash
-uv run ruff check .
-uv run pytest
+uv sync --extra dev        # installs pre-commit
+uv run pre-commit install  # wires hooks into .git
+```
+
+To run manually:
+
+```bash
+uv run pre-commit run --all-files  # lint + format check
+uv run pytest                      # tests
 ```

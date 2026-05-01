@@ -40,3 +40,12 @@ select = ["E", "W", "F", "I", "B", "UP", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = ["S101"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101", "B310", "B615"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.0",
+]

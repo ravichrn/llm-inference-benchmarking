@@ -39,9 +39,7 @@ def init_ledger() -> None:
             """
         )
         try:
-            conn.execute(
-                "ALTER TABLE gateway_usage ADD COLUMN request_id TEXT NOT NULL DEFAULT ''"
-            )
+            conn.execute("ALTER TABLE gateway_usage ADD COLUMN request_id TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError:
             pass
         conn.commit()
