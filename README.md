@@ -1,6 +1,6 @@
 # llm-inference-benchmarking
 
-[![CI](https://github.com/ravicharanketha/llm-inference-benchmarking/actions/workflows/ci.yml/badge.svg)](https://github.com/ravicharanketha/llm-inference-benchmarking/actions/workflows/ci.yml)
+[![CI](https://github.com/ravichrn/llm-inference-benchmarking/actions/workflows/ci.yml/badge.svg)](https://github.com/ravichrn/llm-inference-benchmarking/actions/workflows/ci.yml)
 
 Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, cost, and quality tradeoffs across routing tiers (gateway benchmark) and quantization formats (Modal GPU benchmark).
 
