@@ -6,10 +6,20 @@ from llm_inference_benchmarking.types import GatewayUsage
 _log = logging.getLogger(__name__)
 
 _DEFAULT_PRICING = {
+    # OpenAI — prices per 1k tokens (input, output)
     "gpt-4o": (0.005, 0.015),
     "gpt-4o-mini": (0.00015, 0.0006),
+    "gpt-4.1": (0.002, 0.008),
+    "gpt-4.1-mini": (0.0004, 0.0016),
+    "gpt-4.1-nano": (0.0001, 0.0004),
+    "gpt-5.4": (0.002, 0.008),
+    "gpt-5.4-mini": (0.0004, 0.0016),
+    "gpt-5.5": (0.002, 0.008),
+    # Anthropic
     "claude-opus-4-6": (0.015, 0.075),
     "claude-sonnet-4-6": (0.003, 0.015),
+    "claude-haiku-4-5-20251001": (0.0008, 0.004),
+    # Local / self-hosted (no cost)
     "llama3.2": (0.0, 0.0),
     "meta-llama/Llama-3.1-8B-Instruct": (0.0, 0.0),
 }

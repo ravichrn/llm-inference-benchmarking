@@ -8,6 +8,10 @@ import time
 import urllib.request
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from llm_inference_benchmarking.client import GatewayClient
 from llm_inference_benchmarking.types import GatewayRequest
 

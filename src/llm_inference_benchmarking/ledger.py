@@ -89,3 +89,15 @@ def log_usage(
             ),
         )
         conn.commit()
+
+
+def get_today_success_cost_usd() -> float:
+    """Return total estimated cost (USD) of successful requests logged today."""
+    _ensure_ledger()
+    db_path = get_ledger_db_path()
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(estimated_cost_usd), 0.0) FROM gateway_usage "
+            "WHERE ok = 1 AND date(ts) = date('now')"
+        ).fetchone()
+    return float(row[0]) if row else 0.0

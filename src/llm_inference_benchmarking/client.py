@@ -1,13 +1,19 @@
+import os
 import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 from llm_inference_benchmarking.cost import enrich_cost
-from llm_inference_benchmarking.ledger import log_usage
+from llm_inference_benchmarking.ledger import get_today_success_cost_usd, log_usage
 from llm_inference_benchmarking.metrics import observe_error, observe_success
 from llm_inference_benchmarking.policy import RoutingPolicyEngine
-from llm_inference_benchmarking.types import GatewayRequest, GatewayResult, GatewayUsage
+from llm_inference_benchmarking.types import (
+    GatewayDecision,
+    GatewayRequest,
+    GatewayResult,
+    GatewayUsage,
+)
 
 
 class GatewayClient:
@@ -115,6 +121,23 @@ def _build_llm(backend: str, model: str):
             temperature=0.3,
         )
     return ChatOpenAI(model=model, temperature=0.3)
+
+
+def _apply_budget_policy(policy: Any, decision: GatewayDecision) -> GatewayDecision:
+    """Enforce daily spend caps. Raises RuntimeError on hard cap; downgrades tier on soft cap."""
+    hard_cap = float(os.getenv("GATEWAY_DAILY_USD_HARD_CAP", "0") or "0")
+    soft_cap = float(os.getenv("GATEWAY_DAILY_USD_SOFT_CAP", "0") or "0")
+    if not hard_cap and not soft_cap:
+        return decision
+    today_spend = get_today_success_cost_usd()
+    if hard_cap and today_spend >= hard_cap:
+        raise RuntimeError(
+            f"Daily hard cap of ${hard_cap:.2f} reached (spent ${today_spend:.4f}). "
+            "Requests blocked until tomorrow."
+        )
+    if soft_cap and today_spend >= soft_cap and decision.tier == "premium":
+        return policy.resolve_tier("balanced")
+    return decision
 
 
 def _extract_usage(raw: Any) -> GatewayUsage:

@@ -36,7 +36,11 @@ class RoutingPolicyEngine:
                 return GatewayDecision(
                     tier=tier, backend="ollama", model=model, reason="cheap_local"
                 )
-            model = os.getenv("GATEWAY_CHEAP_MODEL", "gpt-4o-mini")
+            if os.getenv("GATEWAY_CHEAP_NO_CLOUD_FALLBACK", "").strip():
+                raise RuntimeError(
+                    "cheap tier: Ollama unavailable and GATEWAY_CHEAP_NO_CLOUD_FALLBACK is set"
+                )
+            model = os.getenv("GATEWAY_CHEAP_MODEL", "gpt-5.4-mini")
             return GatewayDecision(tier=tier, backend="openai", model=model, reason="cheap_cloud")
 
         if tier == "premium":
@@ -48,7 +52,7 @@ class RoutingPolicyEngine:
                 return GatewayDecision(
                     tier=tier, backend="claude", model=model, reason="premium_quality"
                 )
-            model = os.getenv("GATEWAY_PREMIUM_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o"))
+            model = os.getenv("GATEWAY_PREMIUM_MODEL", os.getenv("OPENAI_MODEL", "gpt-5.5"))
             return GatewayDecision(
                 tier=tier, backend="openai", model=model, reason="premium_default"
             )
@@ -62,7 +66,7 @@ class RoutingPolicyEngine:
             return GatewayDecision(
                 tier=tier, backend="claude", model=model, reason="balanced_claude"
             )
-        model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        model = os.getenv("OPENAI_MODEL", "gpt-5.4")
         return GatewayDecision(tier=tier, backend="openai", model=model, reason="balanced_openai")
 
 
