@@ -17,7 +17,6 @@ def get_ledger_db_path() -> Path:
 
 def init_ledger() -> None:
     db_path = get_ledger_db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
@@ -95,7 +94,6 @@ def get_today_success_cost_usd() -> float:
     db_path = get_ledger_db_path()
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
-            "SELECT COALESCE(SUM(estimated_cost_usd), 0.0) FROM gateway_usage "
-            "WHERE ok = 1 AND date(ts) = date('now')"
+            "SELECT COALESCE(SUM(estimated_cost_usd), 0.0) FROM gateway_usage WHERE ok = 1 AND date(ts) = date('now')"
         ).fetchone()
     return float(row[0]) if row else 0.0

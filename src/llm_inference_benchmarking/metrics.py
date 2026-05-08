@@ -18,14 +18,10 @@ _ESTIMATED_COST = Counter(
 )
 
 
-def observe_success(
-    tier: str, backend: str, model: str, latency_ms: int, estimated_cost_usd: float
-) -> None:
+def observe_success(tier: str, backend: str, model: str, latency_ms: int, estimated_cost_usd: float) -> None:
     _REQS.labels(tier=tier, backend=backend, model=model, status="ok").inc()
     _LATENCY.labels(tier=tier, backend=backend, model=model).observe(latency_ms / 1000.0)
-    _ESTIMATED_COST.labels(tier=tier, backend=backend, model=model).inc(
-        max(estimated_cost_usd, 0.0)
-    )
+    _ESTIMATED_COST.labels(tier=tier, backend=backend, model=model).inc(max(estimated_cost_usd, 0.0))
 
 
 def observe_error(tier: str, backend: str, model: str) -> None:

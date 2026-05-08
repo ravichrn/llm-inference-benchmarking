@@ -112,10 +112,7 @@ async def _run_level(
 
 
 def _print_table(levels: list[dict]) -> None:
-    header = (
-        f"{'Concurrency':>12}  {'Req/s':>8}  {'P50 (ms)':>10}"
-        f"  {'P95 (ms)':>10}  {'P99 (ms)':>10}  {'Errors':>7}"
-    )
+    header = f"{'Concurrency':>12}  {'Req/s':>8}  {'P50 (ms)':>10}  {'P95 (ms)':>10}  {'P99 (ms)':>10}  {'Errors':>7}"
     print("\n" + header)
     print("-" * len(header))
     for lvl in levels:

@@ -6,19 +6,21 @@ import os
 import sqlite3
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
 from llm_inference_benchmarking.client import GatewayClient
 from llm_inference_benchmarking.ledger import get_ledger_db_path
+from llm_inference_benchmarking.rate_limiter import RateLimiter
 from llm_inference_benchmarking.types import GatewayRequest
 
 load_dotenv()
 
 app = FastAPI(title="Inference Gateway", version="0.1.0")
 _api_client = GatewayClient()
+_rate_limiter = RateLimiter()
 
 
 class _GenerateRequest(BaseModel):
@@ -46,8 +48,15 @@ def health() -> dict[str, str]:
 
 
 @app.post("/generate")
-def generate(req: _GenerateRequest, x_api_key: str | None = Header(default=None)) -> dict:
+def generate(request: Request, req: _GenerateRequest, x_api_key: str | None = Header(default=None)) -> dict:
     _require_api_key(x_api_key)
+    client_ip = request.client.host if request.client else "unknown"
+    if not _rate_limiter.is_allowed(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded: max {_rate_limiter.rpm_limit} requests/minute.",
+            headers={"Retry-After": "60"},
+        )
     try:
         res = _api_client.invoke(GatewayRequest(prompt=req.prompt, tier=req.tier, role=req.role))
         return {
@@ -94,6 +103,22 @@ def usage_summary(x_api_key: str | None = Header(default=None)) -> dict:
         return {"summary": [dict(r) for r in rows]}
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Ledger query failed.") from exc
+
+
+@app.get("/sla/status")
+def sla_status(x_api_key: str | None = Header(default=None)) -> dict:
+    _require_api_key(x_api_key)
+    tiers = ["cheap", "balanced", "premium"]
+    status = {}
+    for tier in tiers:
+        cap = _api_client.sla.caps.get(tier)
+        p99 = _api_client.sla.p99(tier)
+        status[tier] = {
+            "p99_ms": p99,
+            "cap_ms": cap,
+            "breached": (p99 is not None and cap is not None and p99 > cap),
+        }
+    return {"sla": status}
 
 
 @app.get("/metrics")
