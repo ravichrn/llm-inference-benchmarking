@@ -14,6 +14,7 @@ from starlette.responses import Response
 from llm_inference_benchmarking.client import GatewayClient
 from llm_inference_benchmarking.ledger import get_ledger_db_path
 from llm_inference_benchmarking.rate_limiter import RateLimiter
+from llm_inference_benchmarking.sla import SLAViolationError
 from llm_inference_benchmarking.types import GatewayRequest
 
 load_dotenv()
@@ -72,6 +73,8 @@ def generate(request: Request, req: _GenerateRequest, x_api_key: str | None = He
                 "latency_ms": res.usage.latency_ms,
             },
         }
+    except SLAViolationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Gateway inference failed.") from exc
 

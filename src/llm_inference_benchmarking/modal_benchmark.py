@@ -12,7 +12,7 @@ cpu-llama-cpp):
 Prerequisites:
   modal setup          # authenticate with your Modal account (one-time)
 
-Optional .env overrides (Modal reads .env automatically via Secret.from_dotenv):
+Optional .env overrides (passed via modal.Secret.from_dict from the env at launch time):
   HUGGING_FACE_HUB_TOKEN=<token>   # only needed if switching to a gated model
   QUANT_GPTQ_MODEL=<hf_model_id>   # override default GPTQ checkpoint
   GGUF_REPO=<hf_repo_id>           # override default GGUF repo for cpu-llama-cpp mode

@@ -191,7 +191,7 @@ def test_quality_router_none_when_all_below_threshold(tmp_path: Path):
 
 
 def test_pareto_load_points(tmp_path: Path):
-    from llm_inference_benchmarking.pareto import _load_points
+    from llm_inference_benchmarking.viz import _load_points
 
     data = [
         {
@@ -218,7 +218,7 @@ def test_pareto_load_points(tmp_path: Path):
 
 
 def test_pareto_frontier_correctness():
-    from llm_inference_benchmarking.pareto import _pareto_frontier
+    from llm_inference_benchmarking.viz import _pareto_frontier
 
     points = [
         {"label": "A", "cost_per_1k": 0.001, "accuracy": 0.60},
@@ -231,7 +231,7 @@ def test_pareto_frontier_correctness():
 
 
 def test_pareto_empty_dir(tmp_path: Path):
-    from llm_inference_benchmarking.pareto import _load_points
+    from llm_inference_benchmarking.viz import _load_points
 
     assert _load_points(tmp_path) == []
 

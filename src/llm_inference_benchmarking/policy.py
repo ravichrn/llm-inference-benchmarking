@@ -1,6 +1,10 @@
 import os
+import time
 
 from llm_inference_benchmarking.types import GatewayDecision, GatewayRequest
+
+_OLLAMA_CACHE: tuple[float, bool] = (0.0, False)  # (expires_at, result)
+_OLLAMA_TTL = 30.0  # seconds
 
 
 class RoutingPolicyEngine:
@@ -37,7 +41,8 @@ class RoutingPolicyEngine:
             if _check_ollama():
                 model = os.getenv("GATEWAY_CHEAP_MODEL", os.getenv("OLLAMA_MODEL", "llama3.2"))
                 return GatewayDecision(tier=tier, backend="ollama", model=model, reason="cheap_local")
-            if os.getenv("GATEWAY_CHEAP_NO_CLOUD_FALLBACK", "").strip():
+            _val = os.getenv("GATEWAY_CHEAP_NO_CLOUD_FALLBACK", "").strip().lower()
+            if _val and _val not in ("0", "false", "no"):
                 raise RuntimeError("cheap tier: Ollama unavailable and GATEWAY_CHEAP_NO_CLOUD_FALLBACK is set")
             model = os.getenv("GATEWAY_CHEAP_MODEL", "gpt-5.4-mini")
             return GatewayDecision(tier=tier, backend="openai", model=model, reason="cheap_cloud")
@@ -62,10 +67,16 @@ class RoutingPolicyEngine:
 
 
 def _check_ollama() -> bool:
+    global _OLLAMA_CACHE
+    expires_at, cached_result = _OLLAMA_CACHE
+    if time.monotonic() < expires_at:
+        return cached_result
     try:
         import urllib.request
 
         urllib.request.urlopen("http://localhost:11434", timeout=1)
-        return True
+        result = True
     except Exception:
-        return False
+        result = False
+    _OLLAMA_CACHE = (time.monotonic() + _OLLAMA_TTL, result)
+    return result

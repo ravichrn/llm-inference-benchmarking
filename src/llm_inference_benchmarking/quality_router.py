@@ -32,9 +32,14 @@ def _load_quality_scores(results_dir: Path) -> dict[str, float]:
     for fpath in results_dir.glob("modal_quant_benchmark*.json"):
         try:
             data = json.loads(fpath.read_text())
-            if not isinstance(data, list):
+            # Modal writes {"results": [...], "gpu_cost_per_hr_usd": ...}; tests write a bare list
+            if isinstance(data, dict):
+                entries = data.get("results", [])
+            elif isinstance(data, list):
+                entries = data
+            else:
                 continue
-            for entry in data:
+            for entry in entries:
                 model = entry.get("model_id", "")
                 q = entry.get("quality", {})
                 accuracy = q.get("mmlu_accuracy") if isinstance(q, dict) else None
