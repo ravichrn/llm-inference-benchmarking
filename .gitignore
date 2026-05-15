@@ -10,3 +10,4 @@ results/
 .env
 :memory:
 *.md
+INTERVIEW_GUIDE.md

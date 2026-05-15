@@ -1,6 +1,5 @@
 # llm-inference-benchmarking
 
-
 Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, cost, and quality tradeoffs across routing tiers (gateway benchmark) and quantization formats (Modal GPU benchmark).
 
 ---
@@ -89,7 +88,6 @@ Results merged → results/modal_quant_<gpu>.json
 - `cheap` is **5.7× cheaper** than `balanced` and **2.1× faster** on mean latency — strongly preferred for simple/short tasks
 - P50 is the reliable signal for `balanced`/`premium` — both have a long tail from verbose responses; P50 stays 4.9–5.6s while mean runs 9–11s
 - `balanced` and `premium` cost delta is small (~22%) — `premium` is better value for complex tasks
-- Pricing for gpt-5.x models is placeholder until OpenAI publishes official rates; update in `cost.py`
 
 ---
 
@@ -97,17 +95,15 @@ Results merged → results/modal_quant_<gpu>.json
 
 **Model:** `unsloth/Meta-Llama-3.1-8B-Instruct` · **GPU:** NVIDIA A10G · **GPU cost:** $1.10/hr · **Run:** 2026-05-07 · **Raw data:** [results/modal_quant_a10g.json](results/modal_quant_a10g.json)
 
-> fp16, vllm, gptq rows reflect the latest run (2026-05-07). Remaining rows are from a prior A10G run and are kept for completeness; re-run those modes with `--merge` to refresh.
-
 ### Core metrics
 
 | Mode | Engine | Mean Latency (ms) | Output tok/s | VRAM (MB) | Perplexity | MMLU | Cost / 1k out tok (USD) |
 |---|---|---:|---:|---:|---:|---:|---:|
 | **tensor-parallel** | vLLM (2× A100-80GB) | **1,762** | **146.7** | 2× GPU | n/a ¹ | **94%** (50q) | $0.0042 ⁴ |
 | **fp8** | vLLM | 4,665 | 54.9 | — ² | n/a ¹ | ⚠ 6% (50q) | $0.0056 |
-| **gptq** | HuggingFace | **7,290** | **34.7** | 5,495 | 5.307 | 76% (50q) | **$0.0088** |
-| **vllm** | vLLM | 8,474 | 30.2 | — ² | n/a ¹ | **94%** (50q) | $0.0101 |
-| **fp16** | HuggingFace | 9,199 | 27.7 | 17,321 | 4.303 | 80% (50q) | $0.0110 |
+| **gptq** | HuggingFace | **7,375** | **34.8** | 5,495 | 5.307 | 76% (50q) | **$0.0088** |
+| **vllm** | vLLM | 8,776 | 29.1 | — ² | n/a ¹ | **94%** (50q) | $0.0101 |
+| **fp16** | HuggingFace | 9,533 | 26.7 | 17,321 | 5.099 | 74% (50q) | $0.0110 |
 | **flash-attn** | HuggingFace (SDPA) | 9,541 | 26.4 | 17,321 | 5.099 | 74% (50q) | $0.0116 |
 | **torch-compile** | HuggingFace | 9,597 | 26.2 | 17,321 | 5.099 | 74% (50q) | $0.0117 |
 | **spec-dec** | HuggingFace | 10,259 | 23.6 | 17,321 | 5.099 | 74% (50q) | $0.0129 |
@@ -124,6 +120,9 @@ Results merged → results/modal_quant_<gpu>.json
 > ⁵ CPU modes run a 20-question MMLU subset (too slow for 50 questions). Treat as directional only.
 > ⚠ **fp8 (6% MMLU)**: SW-emulated FP8 on A10G degrades output quality — hardware-native FP8 requires H100/H200. Do not use fp8 on A10G.
 
+![Quantization quality: MMLU accuracy and perplexity by mode](charts/quant_quality.png)
+![Cost vs MMLU accuracy Pareto frontier](charts/pareto.png)
+
 ### Batch throughput (output tok/s)
 
 > "—" = not benchmarked at that batch size. vLLM modes (tensor-parallel, fp8) run batch 1 and 8 only; continuous-batching uses an async queue so batch 1/4 are not meaningful; spec-dec skips batch 8 (draft acceptance degrades with diverse batches); flash-attn and torch-compile run batch 1 and 8 only.
@@ -132,9 +131,9 @@ Results merged → results/modal_quant_<gpu>.json
 |---|---:|---:|---:|
 | **tensor-parallel** | **146.7** | — | **1,106.0** |
 | **fp8** | **54.9** | — | **420.4** |
-| gptq | 34.5 | 137.5 | 277.2 |
-| vllm | 30.2 | 114.5 | 225.1 |
-| fp16 | 27.7 | 107.3 | 210.3 |
+| gptq | 34.8 | 138.8 | 278.1 |
+| vllm | 29.1 | 113.0 | 222.3 |
+| fp16 | 26.7 | 104.0 | 203.2 |
 | continuous-batching | — | — | 223.1 |
 | flash-attn | 26.4 | — | 203.0 |
 | torch-compile | 26.2 | — | 188.7 |
@@ -143,14 +142,16 @@ Results merged → results/modal_quant_<gpu>.json
 | int8 | 8.3 | 30.1 | 60.1 |
 | spec-dec | 23.6 | — | — |
 
+![Per-request latency degradation under batching](charts/batch_latency.png)
+
 ### Time to first token (TTFT)
 
 TTFT ≈ prefill phase duration. Quantization affects prefill differently than decode: 4-bit GPTQ has the fastest prefill (Marlin INT4 kernels); NF4/nf4-dq/int8 are slower due to dequantization overhead on the attention projection.
 
 | Mode | TTFT / Prefill (ms) |
 |---|---:|
-| **gptq** | **31.0** |
-| fp16 | 41.1 |
+| **gptq** | **31.6** |
+| fp16 | 41.4 |
 | flash-attn | 40.4 |
 | torch-compile | 39.8 |
 | spec-dec | 42.2 |
@@ -158,14 +159,18 @@ TTFT ≈ prefill phase duration. Quantization affects prefill differently than d
 | nf4-dq | 142.7 |
 | int8 | 163.7 |
 
-> Per-token decode timing is instrumented for fp16 and gptq only: fp16 decode=35.9 ms/tok (prefill/decode ratio 1.15), gptq decode=28.5 ms/tok (ratio 1.09). Both near-1 ratios confirm this is a memory-bandwidth-bound workload. Other HF modes have TTFT from the streamer callback but no per-token decode split yet.
+> Per-token decode timing is instrumented for fp16 and gptq only: fp16 decode=37.2 ms/tok (prefill/decode ratio 1.11), gptq decode=28.8 ms/tok (ratio 1.10). Both near-1 ratios confirm this is a memory-bandwidth-bound workload. Other HF modes have TTFT from the streamer callback but no per-token decode split yet.
 
-### MMLU accuracy by subject
+![TTFT vs output throughput tradeoff](charts/ttft_vs_throughput.png)
+
+### Model Evaluation
+
+#### MMLU accuracy by subject (zero-shot log-probability, 50-question CS/ML subset)
 
 | Mode | CS & Programming | ML & Deep Learning | Systems & Networking | Statistics & Math | Overall |
 |---|---:|---:|---:|---:|---:|
 | **vllm** | 85.7% (12/14) | **95.0%** (19/20) | **100%** (9/9) | **100%** (7/7) | **94%** (47/50) |
-| fp16 | 78.6% (11/14) | 75.0% (15/20) | 88.9% (8/9) | 85.7% (6/7) | 80% (40/50) |
+| fp16 | 78.6% (11/14) | 70.0% (14/20) | 66.7% (6/9) | 85.7% (6/7) | 74% (37/50) |
 | gptq | 78.6% (11/14) | 70.0% (14/20) | 77.8% (7/9) | 85.7% (6/7) | 76% (38/50) |
 
 > vLLM scores highest across all subjects. GPTQ INT4 compression hurts ML/DL questions most (70% vs 75% fp16) — quantization degrades nuanced reasoning more than factual recall.
@@ -255,24 +260,24 @@ uv run modal run src/llm_inference_benchmarking/modal_benchmark.py \
 
 **Supported GPUs:** `T4` ($0.59/hr) · `A10G` ($1.10/hr) · `A100-40GB` ($3.70/hr) · `A100-80GB` ($4.00/hr) · `H100` ($6.45/hr)
 
-| Mode | Engine | Quantization | GPU | Notes |
-|---|---|---|---|---|
-| `fp16` | HuggingFace | None | Any | Baseline reference |
-| `int8` | HuggingFace | bitsandbytes 8-bit | Any | Avoid on A10G — nf4 dominates on every metric |
-| `nf4` / `nf4-dq` | HuggingFace | 4-bit NormalFloat | Any | Best speed/VRAM balance; nf4-dq saves 2 GB extra |
-| `spec-dec` | HuggingFace | fp16 + 1B draft | Any | Only useful for predictable, repetitive outputs |
-| `vllm` | vLLM | fp16 (PagedAttention) | Any | Best single-GPU quality (94% MMLU); production default |
-| `gptq` | HuggingFace | INT4 GPTQ (pre-quantized) | Any | Fastest HF mode; Marlin INT4 beats fp16 on latency |
-| `fp8` | vLLM | Dynamic FP8 | **H100 ideal** | HW-native on H100; SW-emulated on A10G (6% MMLU — broken) |
-| `flash-attn` | HuggingFace | fp16 + PyTorch SDPA | Any | Gains at long sequence lengths |
-| `torch-compile` | HuggingFace | fp16 + JIT fusion | Any | First call slow; gains on repeated inference patterns |
-| `tensor-parallel` | vLLM | fp16, TP=2 | **2× A100-80GB** | Highest throughput (146.7 tok/s); cheapest per token at scale |
-| `continuous-batching` | vLLM async | fp16 | Any | Concurrency sweep 1/4/8/16; measures queue depth efficiency |
-| `tgi` | HuggingFace TGI 2.4 | fp16 | Any | Production TGI server; TTFT via streaming |
-| `cpu-q2k` | llama.cpp | GGUF Q2_K (~2.9 GB) | CPU only | Lowest RAM; noticeable quality loss |
-| `cpu-q4km` | llama.cpp | GGUF Q4_K_M (~4.9 GB) | CPU only | Best CPU speed/quality balance |
-| `cpu-q5km` | llama.cpp | GGUF Q5_K_M (~5.7 GB) | CPU only | Near-fp16 quality; 2× slower than Q4 |
-| `cpu-q8_0` | llama.cpp | GGUF Q8_0 (~8.5 GB) | CPU only | Near-lossless; largest RAM footprint |
+| Mode | GPU | Notes |
+|---|---|---|
+| `fp16` | Any | Baseline reference |
+| `int8` | Any | Avoid on A10G — nf4 dominates on every metric |
+| `nf4` / `nf4-dq` | Any | Best speed/VRAM balance; nf4-dq saves 2 GB extra |
+| `spec-dec` | Any | Only useful for predictable, repetitive outputs |
+| `vllm` | Any | Best single-GPU quality (94% MMLU); production default |
+| `gptq` | Any | Fastest HF mode; Marlin INT4 beats fp16 on latency |
+| `fp8` | **H100 ideal** | SW-emulated on A10G (6% MMLU — broken); HW-native on H100 |
+| `flash-attn` | Any | Gains at long sequence lengths |
+| `torch-compile` | Any | First call slow; gains on repeated inference patterns |
+| `tensor-parallel` | **2× A100-80GB** | Highest throughput (146.7 tok/s); cheapest per token at scale |
+| `continuous-batching` | Any | Concurrency sweep 1/4/8/16; measures queue depth efficiency |
+| `tgi` | Any | Production TGI server; TTFT via streaming |
+| `cpu-q2k` | CPU only | Lowest RAM; noticeable quality loss |
+| `cpu-q4km` | CPU only | Best CPU speed/quality balance |
+| `cpu-q5km` | CPU only | Near-fp16 quality; 2× slower than Q4 |
+| `cpu-q8_0` | CPU only | Near-lossless; largest RAM footprint |
 
 ### Concurrent load test
 

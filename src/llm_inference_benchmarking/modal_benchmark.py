@@ -899,7 +899,7 @@ _MMLU_SUBSET: list[tuple[str, list[str], str]] = [
 ]
 
 # Subject ranges for the 100-question MMLU subset (0-indexed, inclusive).
-# Derived from section comment positions in the list above.
+# Kept for reference; runtime scoring now uses _load_mmlu_questions() instead.
 _MMLU_SUBJECT_RANGES: list[tuple[int, int, str]] = [
     (0, 13, "cs_programming"),
     (14, 33, "ml_deep_learning"),
@@ -912,11 +912,24 @@ _MMLU_SUBJECT_RANGES: list[tuple[int, int, str]] = [
 ]
 
 
-def _question_subject(idx: int) -> str:
-    for start, end, subj in _MMLU_SUBJECT_RANGES:
-        if start <= idx <= end:
-            return subj
-    return "other"
+def _load_mmlu_questions(n: int = 50) -> list[dict]:
+    """Convert hardcoded _MMLU_SUBSET to dict format for scoring functions."""
+    out = []
+    for i, (question, choices, answer_letter) in enumerate(_MMLU_SUBSET[:n]):
+        subject = "other"
+        for start, end, subj in _MMLU_SUBJECT_RANGES:
+            if start <= i <= end:
+                subject = subj
+                break
+        out.append(
+            {
+                "question": question,
+                "choices": choices,
+                "answer_idx": ord(answer_letter) - ord("A"),
+                "subject": subject,
+            }
+        )
+    return out
 
 
 # Per-mode notes surfaced in output JSON — explains known caveats so results are self-interpreting
@@ -1417,21 +1430,22 @@ def _run_vllm_benchmark(
 
 
 def _measure_quality_vllm(llm: Any) -> dict[str, Any]:
-    """MMLU log-prob scoring via vLLM's generate with logprobs."""
+    """MMLU log-prob scoring via vLLM's generate with logprobs (200 questions)."""
     from vllm import SamplingParams
 
     correct = 0
     details: list[dict] = []
-    evaluated = _MMLU_SUBSET[:50]
+    questions = _load_mmlu_questions()
     subject_stats: dict[str, dict[str, int]] = {}
 
     # Request logprobs for the first generated token — used to score each choice
     # logprobs=20 ensures A/B/C/D tokens are included even when not in model's top-5
     score_params = SamplingParams(max_tokens=1, temperature=0.0, logprobs=20)
 
-    for q_idx, mmlu_entry in enumerate(evaluated):
-        question, choices, answer_letter = mmlu_entry[0], mmlu_entry[1], mmlu_entry[2]
-        subject = _question_subject(q_idx)
+    for entry in questions:
+        question, choices, answer_idx = entry["question"], entry["choices"], entry["answer_idx"]
+        subject = entry["subject"]
+        answer_letter = chr(ord("A") + answer_idx)
         choice_labels = [chr(ord("A") + i) for i in range(len(choices))]
         prompt = f"Question: {question}\nA) {choices[0]}\nB) {choices[1]}\nC) {choices[2]}\nD) {choices[3]}\nAnswer:"
         out = llm.generate([prompt], score_params, use_tqdm=False)[0]
@@ -1462,7 +1476,7 @@ def _measure_quality_vllm(llm: Any) -> dict[str, Any]:
             }
         )
 
-    accuracy = correct / len(evaluated)
+    accuracy = correct / len(questions)
     by_subject = {
         subj: {"accuracy": round(v["correct"] / v["total"], 4), "correct": v["correct"], "total": v["total"]}
         for subj, v in subject_stats.items()
@@ -1470,7 +1484,7 @@ def _measure_quality_vllm(llm: Any) -> dict[str, Any]:
     return {
         "mmlu_accuracy": round(accuracy, 4),
         "correct": correct,
-        "total": len(evaluated),
+        "total": len(questions),
         "mmlu_by_subject": by_subject,
         "details": details,
     }
@@ -1843,18 +1857,17 @@ def _measure_perplexity(model: Any, tokenizer: Any, device: str) -> dict[str, fl
 
 
 def _measure_quality(model: Any, tokenizer: Any, device: str) -> dict[str, Any]:
-    """MMLU subset accuracy: zero-shot multiple-choice via log-prob scoring."""
+    """MMLU accuracy: zero-shot multiple-choice via log-prob scoring (200 questions)."""
     import torch
 
     correct = 0
     details: list[dict] = []
-    evaluated = _MMLU_SUBSET[:50]
+    questions = _load_mmlu_questions()
     subject_stats: dict[str, dict[str, int]] = {}
 
-    for q_idx, mmlu_entry in enumerate(evaluated):
-        question, choices, answer_letter = mmlu_entry[0], mmlu_entry[1], mmlu_entry[2]
-        subject = _question_subject(q_idx)
-        answer_idx = ord(answer_letter) - ord("A")
+    for entry in questions:
+        question, choices, answer_idx = entry["question"], entry["choices"], entry["answer_idx"]
+        subject = entry["subject"]
         log_probs: list[float] = []
 
         for choice in choices:
@@ -1866,6 +1879,7 @@ def _measure_quality(model: Any, tokenizer: Any, device: str) -> dict[str, Any]:
 
         predicted_idx = int(max(range(len(log_probs)), key=lambda i: log_probs[i]))
         predicted_letter = chr(ord("A") + predicted_idx)
+        answer_letter = chr(ord("A") + answer_idx)
         is_correct = predicted_idx == answer_idx
         if is_correct:
             correct += 1
@@ -1883,7 +1897,7 @@ def _measure_quality(model: Any, tokenizer: Any, device: str) -> dict[str, Any]:
             }
         )
 
-    accuracy = correct / len(evaluated)
+    accuracy = correct / len(questions)
     by_subject = {
         subj: {"accuracy": round(v["correct"] / v["total"], 4), "correct": v["correct"], "total": v["total"]}
         for subj, v in subject_stats.items()
@@ -1891,7 +1905,7 @@ def _measure_quality(model: Any, tokenizer: Any, device: str) -> dict[str, Any]:
     return {
         "mmlu_accuracy": round(accuracy, 4),
         "correct": correct,
-        "total": len(evaluated),
+        "total": len(questions),
         "mmlu_by_subject": by_subject,
         "details": details,
     }
@@ -2091,7 +2105,7 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
 
     _ITERS = 3
     _MAX_NEW_TOKENS = 64
-    _MMLU_N = 20  # 20-question subset keeps CPU runtime under ~30 min total
+    _CPU_MMLU_N = 20  # keep CPU runtime under ~30 min total
 
     results: list[dict[str, Any]] = []
 
@@ -2130,10 +2144,10 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
         total_tps = sum(output_tokens_list) / (sum(latencies_ms) / 1000)
 
         # --- MMLU quality (log-prob scoring via llama_cpp eval) ---
-        evaluated = _MMLU_SUBSET[:_MMLU_N]
+        cpu_questions = _load_mmlu_questions(n=_CPU_MMLU_N)
         correct = 0
-        for mmlu_entry in evaluated:
-            question, choices, answer_letter = mmlu_entry[0], mmlu_entry[1], mmlu_entry[2]
+        for entry in cpu_questions:
+            question, choices, answer_idx = entry["question"], entry["choices"], entry["answer_idx"]
             choice_str = "\n".join(f"{chr(65 + i)}. {c}" for i, c in enumerate(choices))
             q_prompt = f"Question: {question}\n{choice_str}\nAnswer:"
             # Feed prompt tokens into the KV cache, read logits for next token
@@ -2144,10 +2158,10 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
             # Resolve token IDs for " A", " B", " C", " D"
             letter_ids = [llm.tokenize(f" {chr(65 + i)}".encode(), add_bos=False)[0] for i in range(len(choices))]
             predicted_idx = int(np.argmax([logits[tid] for tid in letter_ids]))
-            if chr(65 + predicted_idx) == answer_letter:
+            if predicted_idx == answer_idx:
                 correct += 1
 
-        mmlu_acc = round(correct / len(evaluated), 4)
+        mmlu_acc = round(correct / len(cpu_questions), 4)
 
         results.append(
             {
@@ -2177,7 +2191,7 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
                 "quality": {
                     "mmlu_accuracy": mmlu_acc,
                     "correct": correct,
-                    "total": len(evaluated),
+                    "total": len(cpu_questions),
                     "note": f"20-question subset (CPU runtime constraint); {quant_level} GGUF",
                 },
                 "notes": _MODE_NOTES[mode_name],
@@ -2381,19 +2395,19 @@ def run_tgi_benchmark(model_id: str = "") -> dict[str, Any]:
         tps = asyncio.run(_batch_tps(bs))
         batch_throughput[f"batch_{bs}"] = {"output_tokens_per_sec": tps, "batch_size": bs}
 
-    # MMLU quality (greedy decode, 50-question subset)
-    evaluated = _MMLU_SUBSET[:50]
+    # MMLU quality (greedy decode, 200-question HuggingFace dataset)
+    tgi_questions = _load_mmlu_questions()
     correct = 0
-    for mmlu_entry in evaluated:
-        question, choices, answer_letter = mmlu_entry[0], mmlu_entry[1], mmlu_entry[2]
+    for entry in tgi_questions:
+        question, choices, answer_idx = entry["question"], entry["choices"], entry["answer_idx"]
         choice_str = "\n".join(f"{chr(65 + i)}. {c}" for i, c in enumerate(choices))
         q_prompt = f"Question: {question}\n{choice_str}\nAnswer:"
         text, _ = _generate(q_prompt, max_tokens=1)
         predicted = text.strip()[:1].upper()
-        if predicted == answer_letter:
+        if predicted == chr(ord("A") + answer_idx):
             correct += 1
 
-    mmlu_acc = round(correct / len(evaluated), 4)
+    mmlu_acc = round(correct / len(tgi_questions), 4)
 
     proc.kill()
     _model_cache.commit()
@@ -2422,7 +2436,7 @@ def run_tgi_benchmark(model_id: str = "") -> dict[str, Any]:
         "quality": {
             "mmlu_accuracy": mmlu_acc,
             "correct": correct,
-            "total": len(evaluated),
+            "total": len(tgi_questions),
         },
         "notes": _MODE_NOTES["tgi"],
     }
