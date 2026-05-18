@@ -1,0 +1,75 @@
+{
+  "base_url": "http://localhost:8010",
+  "tier": "premium",
+  "total_per_level": 50,
+  "levels": [
+    {
+      "concurrency": 1,
+      "total_requests": 50,
+      "successful": 50,
+      "failed": 0,
+      "error_rate_pct": 0.0,
+      "wall_time_s": 255.57,
+      "req_per_sec": 0.2,
+      "latency_ms": {
+        "mean": 5111.4,
+        "p50": 3470.9,
+        "p95": 6344.9,
+        "p99": 68418.8,
+        "min": 1740.2,
+        "max": 68418.8
+      }
+    },
+    {
+      "concurrency": 5,
+      "total_requests": 50,
+      "successful": 50,
+      "failed": 0,
+      "error_rate_pct": 0.0,
+      "wall_time_s": 41.47,
+      "req_per_sec": 1.21,
+      "latency_ms": {
+        "mean": 3812.1,
+        "p50": 3369.0,
+        "p95": 7215.8,
+        "p99": 7608.4,
+        "min": 1712.0,
+        "max": 7608.4
+      }
+    },
+    {
+      "concurrency": 10,
+      "total_requests": 50,
+      "successful": 50,
+      "failed": 0,
+      "error_rate_pct": 0.0,
+      "wall_time_s": 22.01,
+      "req_per_sec": 2.27,
+      "latency_ms": {
+        "mean": 3873.4,
+        "p50": 3290.5,
+        "p95": 6979.6,
+        "p99": 8930.8,
+        "min": 1740.5,
+        "max": 8930.8
+      }
+    },
+    {
+      "concurrency": 20,
+      "total_requests": 50,
+      "successful": 25,
+      "failed": 25,
+      "error_rate_pct": 50.0,
+      "wall_time_s": 7.35,
+      "req_per_sec": 6.8,
+      "latency_ms": {
+        "mean": 3662.3,
+        "p50": 3654.5,
+        "p95": 6128.0,
+        "p99": 6279.9,
+        "min": 1598.0,
+        "max": 6279.9
+      }
+    }
+  ]
+}

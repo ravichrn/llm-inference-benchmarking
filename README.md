@@ -1,12 +1,12 @@
 # llm-inference-benchmarking
 
-Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, throughput, cost, and quality — including zero-shot MMLU evaluation — across routing tiers and quantization formats.
+Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, throughput, cost, and quality across routing tiers and quantization formats — including zero-shot MMLU evaluation, task-specific LLM-as-judge eval, and cross-provider A/B testing.
 
 ---
 
 ## Architecture
 
-Two independent components: a **cost-aware routing gateway** and a **GPU quantization benchmark**.
+Three independent components: a **cost-aware routing gateway**, a **GPU quantization benchmark**, and an **LLM eval + A/B testing harness**.
 
 ### Gateway
 
@@ -67,6 +67,22 @@ GPU containers per mode, run in parallel
         │
         ▼
 Results merged → results/modal_quant_<gpu>.json
+```
+
+### Eval Harness + A/B Testing
+
+```
+50 prompts × tier (cheap / balanced / premium)
+        │
+        ├─ Model response    (parallel, up to 5 concurrent)
+        ├─ LLM-as-judge      (independent model scores 0–10)
+        └─ Regression check  (vs prior run, flags Δ > 0.5)
+        │
+        ▼
+results/eval_<timestamp>.json   ←─ consumed by quality router
+
+A/B: same prompts → two variants in parallel → independent judge → win rate + cost delta
+POST /ab endpoint exposes this via the gateway API
 ```
 
 ---
@@ -236,6 +252,57 @@ uv run llm-load-test --concurrency 10 --total 100 --tier balanced \
 uv run llm-pareto --results results/
 uv run llm-charts --results results/ --output-dir charts/
 ```
+
+### LLM Eval Harness
+
+Task-specific evaluation with LLM-as-judge scoring across 50 prompts (summarization, reasoning, code, Q&A, instruction-following). Writes `results/eval_<timestamp>.json` in the same schema as quantization benchmarks so the quality router can consume them. Auto-detects a prior run for regression comparison.
+
+```bash
+uv run python -m llm_inference_benchmarking.eval --tier cheap
+uv run python -m llm_inference_benchmarking.eval --tier cheap --dry-run
+```
+
+**Results** (n=50, judge=`gpt-5.4-mini`; raw data: [eval cheap](results/eval_2026-05-18T01-10-11.json) · [eval premium](results/eval_2026-05-18T01-17-38.json)):
+
+| Tier | Model | Avg score | Latency (ms) | Cost/run |
+|---|---|---:|---:|---:|
+| cheap | gpt-5.4-mini | 9.10/10 | 1,408 | $0.003 |
+| premium | claude-opus-4-6 | 8.72/10 | 9,423 | $1.64 |
+
+Score by task type:
+
+| Task type | cheap | premium | Δ |
+|---|---:|---:|---:|
+| code | 8.4 | 7.2 | −1.2 ⚠ |
+| instruction_following | 7.6 | 8.1 | +0.5 |
+| qa | 9.8 | 9.8 | 0.0 |
+| reasoning | 9.9 | 9.2 | −0.7 ⚠ |
+| summarization | 9.1 | 9.3 | +0.2 |
+
+> Regressions on code/reasoning reflect judge bias (gpt-5.4-mini scores OpenAI-style responses higher). The A/B run below uses an independent judge for a fairer cross-provider comparison.
+
+### A/B Testing
+
+Routes the same 50 prompts through two variants in parallel, scores both with an independent LLM judge, and reports win rate + cost delta. Also available as `POST /ab` via the gateway API.
+
+```bash
+uv run python -m llm_inference_benchmarking.ab_router \
+  --variant-a '{"tier":"cheap"}' --variant-b '{"tier":"balanced"}' \
+  --output results/ab_out.json
+uv run python -m llm_inference_benchmarking.ab_router \
+  --variant-a '{"tier":"cheap"}' --variant-b '{"tier":"balanced"}' --dry-run
+```
+
+**Results** (n=50 each run; raw data: [cheap vs balanced](results/ab_2026-05-18T01-20-22.json)):
+
+| Run | Variant A | Variant B | Judge | A score | B score | A win rate | Cost A | Cost B |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| same-provider | gpt-5.4-mini | gpt-5.4 | gpt-5.5 | 8.86 | 8.98 | 10% | $0.013 | $0.070 |
+| cross-provider | gpt-5.4-mini | claude-opus-4-6 | gpt-5.4 | 9.34 | 9.12 | 26% | $0.012 | $1.580 |
+
+- **cheap vs balanced:** balanced adds 0.12 quality points at **5.4× higher cost** — worth it only for code and complex reasoning
+- **cheap vs premium:** cheap scores higher on average; claude-opus-4-6 wins more individual matchups but is **132× more expensive** and **6× slower**
+- Independent judge used in both runs to avoid self-grading bias
 
 ---
 

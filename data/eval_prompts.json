@@ -1,0 +1,302 @@
+[
+  {
+    "id": "sum_001",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nRetrieval-Augmented Generation (RAG) is a technique that enhances large language model outputs by grounding them in external, retrieved documents. Rather than relying solely on parameters learned during training, a RAG system queries a vector store or search engine at inference time, retrieves the most relevant passages, and injects them into the prompt as additional context. This allows the model to answer questions about events after its training cutoff, cite specific sources, and reduce hallucinations on factual queries.",
+    "reference": "RAG improves LLM accuracy by retrieving relevant external documents at inference time and injecting them into the prompt. This grounds responses in up-to-date sources and reduces hallucinations."
+  },
+  {
+    "id": "sum_002",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nQuantization reduces the memory footprint of neural network weights by representing them with fewer bits. INT8 quantization stores weights as 8-bit integers instead of 32-bit floats, cutting VRAM usage by roughly 75%. NF4 (Normal Float 4) is a 4-bit format designed for normally distributed weights, used in QLoRA fine-tuning to fit large models on consumer GPUs without significant accuracy loss. Post-training quantization methods like GPTQ and AWQ apply weight-only quantization offline, then run inference with dequantized activations.",
+    "reference": "Quantization shrinks model memory by using fewer bits per weight (e.g., INT8, NF4), enabling large models to run on consumer GPUs. Formats like GPTQ and AWQ apply this offline with minimal accuracy loss."
+  },
+  {
+    "id": "sum_003",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nThe transformer architecture introduced in 'Attention Is All You Need' (Vaswani et al., 2017) replaced recurrent networks with self-attention mechanisms. Self-attention computes pairwise interactions between every token in a sequence, producing contextualized embeddings regardless of distance. The architecture is parallelizable across tokens, making it significantly faster to train than LSTMs on modern hardware. Subsequent models like BERT and GPT applied transformers to language understanding and generation, respectively.",
+    "reference": "Transformers use self-attention to capture relationships between all tokens simultaneously, replacing slower recurrent networks. This parallelism enabled the large-scale pretraining that underpins BERT, GPT, and their descendants."
+  },
+  {
+    "id": "sum_004",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nVector databases store high-dimensional embeddings and support approximate nearest-neighbor (ANN) search. When a query arrives, it is encoded into the same embedding space as the stored documents; the database returns the k closest vectors by cosine similarity or Euclidean distance. Popular implementations include Pinecone, Weaviate, Qdrant, and pgvector (a PostgreSQL extension). ANN algorithms like HNSW and IVF-Flat trade a small accuracy loss for dramatically faster search at scale.",
+    "reference": "Vector databases index high-dimensional embeddings for fast approximate nearest-neighbor search, returning semantically similar documents to a query. Systems like Pinecone and Qdrant use ANN algorithms such as HNSW to scale this efficiently."
+  },
+  {
+    "id": "sum_005",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nKubernetes (K8s) is an open-source container orchestration platform that automates deployment, scaling, and management of containerized applications. Workloads are described as declarative YAML manifests specifying desired state; the control plane continuously reconciles actual cluster state with that desired state. Key abstractions include Pods (the smallest deployable unit), Deployments (manage replica sets), Services (stable network endpoints), and Ingress (HTTP routing). Horizontal Pod Autoscaler (HPA) scales pods based on CPU/memory or custom metrics.",
+    "reference": "Kubernetes automates container deployment and scaling by reconciling actual cluster state with declarative YAML manifests. Core abstractions like Pods, Deployments, and Services provide building blocks for resilient, scalable applications."
+  },
+  {
+    "id": "sum_006",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nDirect Preference Optimization (DPO) is a reinforcement learning from human feedback (RLHF) alternative that eliminates the need for a separate reward model. Given pairs of preferred and rejected responses to the same prompt, DPO directly fine-tunes the language model to increase the likelihood of preferred responses relative to rejected ones using a simple binary cross-entropy objective. This makes training more stable and compute-efficient compared to the PPO-based RLHF pipeline, while achieving comparable alignment results.",
+    "reference": "DPO fine-tunes language models on preference pairs using a binary cross-entropy loss, bypassing the need for a separate reward model. It achieves alignment comparable to PPO-based RLHF with simpler, more stable training."
+  },
+  {
+    "id": "sum_007",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nPrometheus is an open-source monitoring system that collects time-series metrics by scraping HTTP endpoints at configurable intervals. Metrics are stored locally in a custom database and queried with PromQL. Alertmanager handles routing, deduplication, and notification of alerts. Grafana is commonly paired with Prometheus to render dashboards. The pull-based scrape model means services expose a /metrics endpoint rather than pushing data to a central collector.",
+    "reference": "Prometheus scrapes time-series metrics from /metrics endpoints and stores them locally, queryable with PromQL. It is commonly paired with Alertmanager for alerting and Grafana for visualization."
+  },
+  {
+    "id": "sum_008",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nFlash Attention is an IO-aware exact attention algorithm that tiles the query, key, and value matrices to minimize reads and writes to GPU high-bandwidth memory (HBM). Standard attention materializes the full N×N attention matrix, which requires O(N²) memory and becomes a memory bandwidth bottleneck for long sequences. Flash Attention fuses the softmax and matrix multiplications into a single kernel, reducing HBM access from O(N²) to O(N), enabling 2–4× speedups and supporting much longer context windows without approximation.",
+    "reference": "Flash Attention reduces memory usage and speeds up attention computation by tiling operations to minimize GPU HBM reads/writes. It achieves O(N) memory complexity versus standard attention's O(N²), enabling longer context windows at the same hardware cost."
+  },
+  {
+    "id": "sum_009",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nSpeculative decoding accelerates autoregressive LLM inference by using a small draft model to generate several candidate tokens, which a larger target model then verifies in parallel. If the target model accepts a draft token, it advances the sequence without an additional forward pass; rejected tokens cause rollback to the last accepted position. Because verification is parallelizable and cheaper than generation, speculative decoding can achieve 2–3× throughput improvements for the target model with no change in output distribution.",
+    "reference": "Speculative decoding uses a cheap draft model to propose tokens that a larger model verifies in parallel, skipping expensive forward passes when drafts are accepted. This achieves 2–3× throughput gains with no change in output quality."
+  },
+  {
+    "id": "sum_010",
+    "task_type": "summarization",
+    "prompt": "Summarize the following in 2 sentences:\n\nLoRA (Low-Rank Adaptation) fine-tunes large language models by injecting small trainable rank-decomposition matrices into transformer layers, freezing the original weights. Instead of updating all parameters (often billions), LoRA adds pairs of matrices A∈R^{d×r} and B∈R^{r×k} where r≪min(d,k), reducing trainable parameters by 10,000× or more. The adapter weights can be merged into the base model at inference time with no latency overhead. QLoRA combines LoRA with 4-bit quantization to fine-tune 70B+ models on a single consumer GPU.",
+    "reference": "LoRA fine-tunes LLMs by training small low-rank matrices injected into frozen transformer layers, reducing trainable parameters by orders of magnitude. QLoRA extends this with 4-bit quantization, enabling fine-tuning of very large models on consumer hardware."
+  },
+  {
+    "id": "reason_001",
+    "task_type": "reasoning",
+    "prompt": "If all A are B, and all B are C, are all A also C? Explain your reasoning step by step.",
+    "reference": "Yes. Since all A are B and all B are C, every element of A is also an element of B, which is also an element of C. By transitivity of set inclusion, all A are C."
+  },
+  {
+    "id": "reason_002",
+    "task_type": "reasoning",
+    "prompt": "A model scores 7.2 on task type X in run 1 and 6.5 in run 2. A second model scores 6.8 in run 1 and 7.1 in run 2. Which model improved and by how much?",
+    "reference": "Model 1 decreased by 0.7 (7.2 → 6.5). Model 2 improved by 0.3 (6.8 → 7.1). Model 2 is the one that improved."
+  },
+  {
+    "id": "reason_003",
+    "task_type": "reasoning",
+    "prompt": "You have three routing tiers: cheap ($0.001/1K tokens, p99 800ms), balanced ($0.005/1K tokens, p99 400ms), and premium ($0.02/1K tokens, p99 150ms). A user's SLA requires responses under 500ms. Which is the cheapest tier that meets the SLA?",
+    "reference": "Balanced, with p99 400ms, is the cheapest tier that meets the 500ms SLA. Cheap (800ms p99) exceeds it; premium meets it but costs 4× more."
+  },
+  {
+    "id": "reason_004",
+    "task_type": "reasoning",
+    "prompt": "A vector database query returns cosine similarities [0.92, 0.87, 0.61, 0.55, 0.48] for five documents. If your relevance threshold is 0.75, which documents are relevant and what is the relevant fraction?",
+    "reference": "Documents with similarities 0.92 and 0.87 exceed the 0.75 threshold. 2 out of 5 documents are relevant, giving a relevant fraction of 40%."
+  },
+  {
+    "id": "reason_005",
+    "task_type": "reasoning",
+    "prompt": "A model fine-tuned with LoRA uses rank r=16, input dimension d=4096, output dimension k=4096. How many trainable parameters does the LoRA adapter add (A + B matrices only)?",
+    "reference": "Matrix A: d×r = 4096×16 = 65,536 parameters. Matrix B: r×k = 16×4096 = 65,536 parameters. Total: 131,072 trainable parameters."
+  },
+  {
+    "id": "reason_006",
+    "task_type": "reasoning",
+    "prompt": "An LLM API charges $0.15 per million input tokens and $0.60 per million output tokens. A request uses 800 input tokens and 200 output tokens. What is the total cost in USD?",
+    "reference": "Input cost: 800 / 1,000,000 × $0.15 = $0.00012. Output cost: 200 / 1,000,000 × $0.60 = $0.00012. Total: $0.00024."
+  },
+  {
+    "id": "reason_007",
+    "task_type": "reasoning",
+    "prompt": "A speculative decoding setup uses a draft model that generates 4 candidate tokens per step. The target model accepts draft tokens with 80% probability each, independently. What is the probability that all 4 draft tokens are accepted in a single step?",
+    "reference": "P(all 4 accepted) = 0.8^4 = 0.4096, approximately 41%."
+  },
+  {
+    "id": "reason_008",
+    "task_type": "reasoning",
+    "prompt": "Three engineers estimate a task: Alice says 3 days, Bob says 5 days, Carol says 4 days. Using PERT estimation (optimistic + 4×most likely + pessimistic) / 6, what is the estimate if Alice is optimistic, Carol is most likely, and Bob is pessimistic?",
+    "reference": "PERT = (3 + 4×4 + 5) / 6 = (3 + 16 + 5) / 6 = 24 / 6 = 4 days."
+  },
+  {
+    "id": "reason_009",
+    "task_type": "reasoning",
+    "prompt": "A sliding window rate limiter allows 60 requests per minute. In the last 60 seconds, a client made 55 requests. How many more requests can the client make right now, and when will the window fully reset?",
+    "reference": "The client can make 60 − 55 = 5 more requests now. The window resets continuously as old requests age out — the first request will expire in approximately 1 second, freeing one slot."
+  },
+  {
+    "id": "reason_010",
+    "task_type": "reasoning",
+    "prompt": "A KV cache stores key-value tensors per layer. A model has 32 layers, attention heads of dimension 128, 32 heads, and processes a 2048-token sequence in fp16 (2 bytes). How many MB does the KV cache occupy?",
+    "reference": "Per token: 32 layers × 2 (K+V) × 32 heads × 128 dims × 2 bytes = 32 × 2 × 32 × 128 × 2 = 524,288 bytes = 0.5 MB/token. For 2048 tokens: 0.5 × 2048 = 1024 MB = 1 GB."
+  },
+  {
+    "id": "code_001",
+    "task_type": "code",
+    "prompt": "Write a Python function that takes a list of floats (scores 0–100) and returns a list of 10 bucket counts. Score 100 must land in bucket 9, not overflow.",
+    "reference": "def bucket_scores(scores):\n    buckets = [0] * 10\n    for s in scores:\n        buckets[min(9, int(s / 10))] += 1\n    return buckets"
+  },
+  {
+    "id": "code_002",
+    "task_type": "code",
+    "prompt": "Write a Python async function that calls an HTTP endpoint with a timeout of 5 seconds and returns the JSON response, or None on any error. Use httpx.",
+    "reference": "async def fetch_json(url: str):\n    import httpx\n    try:\n        async with httpx.AsyncClient(timeout=5.0) as client:\n            r = await client.get(url)\n            r.raise_for_status()\n            return r.json()\n    except Exception:\n        return None"
+  },
+  {
+    "id": "code_003",
+    "task_type": "code",
+    "prompt": "Write a Python function that retries a callable up to n times with exponential backoff starting at 1 second, raising the last exception if all retries fail.",
+    "reference": "import time\ndef retry(fn, n=3):\n    delay = 1\n    for i in range(n):\n        try:\n            return fn()\n        except Exception as e:\n            if i == n - 1:\n                raise\n            time.sleep(delay)\n            delay *= 2"
+  },
+  {
+    "id": "code_004",
+    "task_type": "code",
+    "prompt": "Write a Python function that computes cosine similarity between two 1D numpy arrays. Handle the zero-vector case by returning 0.0.",
+    "reference": "import numpy as np\ndef cosine_similarity(a, b):\n    na, nb = np.linalg.norm(a), np.linalg.norm(b)\n    if na == 0 or nb == 0:\n        return 0.0\n    return float(np.dot(a, b) / (na * nb))"
+  },
+  {
+    "id": "code_005",
+    "task_type": "code",
+    "prompt": "Write a Python context manager that measures elapsed wall-clock time and prints it on exit.",
+    "reference": "import time\nfrom contextlib import contextmanager\n@contextmanager\ndef timer(label='elapsed'):\n    t0 = time.perf_counter()\n    yield\n    print(f'{label}: {time.perf_counter() - t0:.3f}s')"
+  },
+  {
+    "id": "code_006",
+    "task_type": "code",
+    "prompt": "Write a Python function that reads a JSONL file (one JSON object per line) and returns a list of dicts, skipping malformed lines.",
+    "reference": "import json\ndef read_jsonl(path):\n    records = []\n    with open(path) as f:\n        for line in f:\n            try:\n                records.append(json.loads(line))\n            except json.JSONDecodeError:\n                continue\n    return records"
+  },
+  {
+    "id": "code_007",
+    "task_type": "code",
+    "prompt": "Write a Python function that takes a dict of model_id → score and returns a sorted list of (model_id, score) tuples, highest score first.",
+    "reference": "def rank_models(scores: dict) -> list:\n    return sorted(scores.items(), key=lambda x: x[1], reverse=True)"
+  },
+  {
+    "id": "code_008",
+    "task_type": "code",
+    "prompt": "Write a Python decorator that caches the result of a function call in a dict keyed by arguments, ignoring kwargs.",
+    "reference": "def simple_cache(fn):\n    cache = {}\n    def wrapper(*args):\n        if args not in cache:\n            cache[args] = fn(*args)\n        return cache[args]\n    return wrapper"
+  },
+  {
+    "id": "code_009",
+    "task_type": "code",
+    "prompt": "Write a Python function that chunks a list into sublists of at most size n.",
+    "reference": "def chunks(lst, n):\n    return [lst[i:i+n] for i in range(0, len(lst), n)]"
+  },
+  {
+    "id": "code_010",
+    "task_type": "code",
+    "prompt": "Write a FastAPI endpoint POST /echo that accepts a JSON body with a 'message' field (string, required) and returns it back with an 'echo' key.",
+    "reference": "from fastapi import FastAPI\nfrom pydantic import BaseModel\napp = FastAPI()\nclass _Req(BaseModel):\n    message: str\n@app.post('/echo')\ndef echo(req: _Req):\n    return {'echo': req.message}"
+  },
+  {
+    "id": "qa_001",
+    "task_type": "qa",
+    "prompt": "What is the difference between a token bucket and a sliding window rate limiter?",
+    "reference": "A token bucket accumulates tokens at a fixed rate up to a max burst capacity; requests consume tokens. A sliding window tracks request timestamps in a rolling time window, counting only those within the window. Token buckets allow short bursts; sliding windows enforce a smoother rate."
+  },
+  {
+    "id": "qa_002",
+    "task_type": "qa",
+    "prompt": "What does p99 latency mean and why is it more useful than average latency for SLAs?",
+    "reference": "p99 latency is the 99th percentile — 99% of requests complete faster than this value. Average latency is distorted by fast requests and hides tail behavior. SLAs care about worst-case user experience, so p99 (and p95) are better indicators of reliability."
+  },
+  {
+    "id": "qa_003",
+    "task_type": "qa",
+    "prompt": "What is the difference between fine-tuning and prompt engineering for adapting an LLM?",
+    "reference": "Prompt engineering adapts model behavior through the input text alone, requiring no weight updates. Fine-tuning updates model weights on task-specific data, producing a new model checkpoint. Prompt engineering is cheaper and faster to iterate; fine-tuning yields stronger task-specific performance and shorter prompts at inference."
+  },
+  {
+    "id": "qa_004",
+    "task_type": "qa",
+    "prompt": "What is MMLU and what does it measure?",
+    "reference": "MMLU (Massive Multitask Language Understanding) is a benchmark of 57 academic subjects (math, history, law, medicine, etc.) testing factual knowledge and reasoning via multiple-choice questions. It measures a model's breadth of world knowledge and is widely used to compare LLMs."
+  },
+  {
+    "id": "qa_005",
+    "task_type": "qa",
+    "prompt": "What is the purpose of a system prompt in a chat-based LLM API?",
+    "reference": "A system prompt sets the model's persona, instructions, and constraints before the user conversation begins. It is processed first and shapes how the model responds throughout the session, enabling role definition, output format enforcement, and safety guardrails."
+  },
+  {
+    "id": "qa_006",
+    "task_type": "qa",
+    "prompt": "What is tensor parallelism and when would you use it?",
+    "reference": "Tensor parallelism splits individual weight matrices across multiple GPUs, so each GPU holds a shard and computations are performed in parallel with an all-reduce communication step. It is used when a single model layer is too large to fit on one GPU, or to reduce per-GPU memory at the cost of inter-GPU communication overhead."
+  },
+  {
+    "id": "qa_007",
+    "task_type": "qa",
+    "prompt": "What is perplexity as an LLM evaluation metric and what does a lower value indicate?",
+    "reference": "Perplexity measures how well a model predicts a text sample — it is the exponentiated average negative log-likelihood per token. Lower perplexity means the model assigns higher probability to the observed tokens, indicating better language modeling. It is often used to compare quantization methods on held-out text."
+  },
+  {
+    "id": "qa_008",
+    "task_type": "qa",
+    "prompt": "What is the difference between RAG and fine-tuning for adding new knowledge to an LLM?",
+    "reference": "RAG retrieves relevant documents at inference time and injects them into the prompt, keeping model weights frozen. Fine-tuning bakes knowledge into model weights through training. RAG is better for frequently changing or private data; fine-tuning is better for stable domain knowledge, style, or format adherence."
+  },
+  {
+    "id": "qa_009",
+    "task_type": "qa",
+    "prompt": "What is prefix caching in LLM inference and what does it optimize?",
+    "reference": "Prefix caching stores the computed KV cache for a shared prompt prefix (e.g., a system prompt) so that subsequent requests reuse it without recomputing attention over those tokens. It reduces latency and cost for requests that share a long common prefix, such as repeated system prompts."
+  },
+  {
+    "id": "qa_010",
+    "task_type": "qa",
+    "prompt": "What is the role of temperature in LLM sampling and how does setting it to 0 affect outputs?",
+    "reference": "Temperature scales the logits before softmax in token sampling. Higher temperature flattens the distribution, increasing randomness and diversity. Lower temperature sharpens it, making high-probability tokens more likely. Temperature 0 is effectively greedy decoding — the model always picks the highest-probability token, producing deterministic, consistent but potentially repetitive outputs."
+  },
+  {
+    "id": "instr_001",
+    "task_type": "instruction_following",
+    "prompt": "List exactly 3 advantages of using a vector database over a traditional relational database for semantic search. Use a numbered list. Do not include any introduction or conclusion.",
+    "reference": "1. Semantic similarity search over embeddings, not exact keyword matching.\n2. Approximate nearest-neighbor algorithms (HNSW, IVF) enable sub-millisecond retrieval at scale.\n3. Native support for high-dimensional dense vectors without schema changes."
+  },
+  {
+    "id": "instr_002",
+    "task_type": "instruction_following",
+    "prompt": "Explain what RLHF is in exactly one sentence.",
+    "reference": "RLHF (Reinforcement Learning from Human Feedback) fine-tunes a language model using human preference rankings of model outputs as a reward signal."
+  },
+  {
+    "id": "instr_003",
+    "task_type": "instruction_following",
+    "prompt": "Give me a JSON object with two keys: 'model' set to 'gpt-4' and 'score' set to 8.5. Output only the JSON, no explanation.",
+    "reference": "{\"model\": \"gpt-4\", \"score\": 8.5}"
+  },
+  {
+    "id": "instr_004",
+    "task_type": "instruction_following",
+    "prompt": "Write a one-line Python comment (starting with #) that describes what the following code does:\nresult = sorted(scores.items(), key=lambda x: x[1], reverse=True)",
+    "reference": "# Sort model scores descending by value"
+  },
+  {
+    "id": "instr_005",
+    "task_type": "instruction_following",
+    "prompt": "Rewrite this sentence in the passive voice: 'The engineer deployed the model to production.'",
+    "reference": "The model was deployed to production by the engineer."
+  },
+  {
+    "id": "instr_006",
+    "task_type": "instruction_following",
+    "prompt": "List the three routing tiers from cheapest to most expensive in a comma-separated list, no spaces after commas.",
+    "reference": "cheap,balanced,premium"
+  },
+  {
+    "id": "instr_007",
+    "task_type": "instruction_following",
+    "prompt": "Convert this number to scientific notation with 2 decimal places: 0.00000423",
+    "reference": "4.23 × 10⁻⁶"
+  },
+  {
+    "id": "instr_008",
+    "task_type": "instruction_following",
+    "prompt": "Translate the following to French in one sentence, keeping technical terms in English: 'The model was quantized to 4-bit precision to reduce memory usage.'",
+    "reference": "Le modèle a été quantifié en précision 4-bit pour réduire l'utilisation de la mémoire."
+  },
+  {
+    "id": "instr_009",
+    "task_type": "instruction_following",
+    "prompt": "Given the following scores, output only the highest value as a plain number: [6.2, 8.1, 7.5, 9.0, 5.8]",
+    "reference": "9.0"
+  },
+  {
+    "id": "instr_010",
+    "task_type": "instruction_following",
+    "prompt": "Write the word 'PASS' if this Python expression evaluates to True, or 'FAIL' if it evaluates to False:\nmin(9, int(100 / 10)) == 9",
+    "reference": "PASS"
+  }
+]

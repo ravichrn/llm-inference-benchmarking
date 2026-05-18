@@ -1,10 +1,12 @@
 import os
+import threading
 import time
 
 from llm_inference_benchmarking.types import GatewayDecision, GatewayRequest
 
 _OLLAMA_CACHE: tuple[float, bool] = (0.0, False)  # (expires_at, result)
-_OLLAMA_TTL = 30.0  # seconds
+_OLLAMA_LOCK = threading.Lock()
+_OLLAMA_TTL = float(os.getenv("GATEWAY_OLLAMA_HEALTH_TTL_S", "30"))
 
 
 class RoutingPolicyEngine:
@@ -68,15 +70,16 @@ class RoutingPolicyEngine:
 
 def _check_ollama() -> bool:
     global _OLLAMA_CACHE
-    expires_at, cached_result = _OLLAMA_CACHE
-    if time.monotonic() < expires_at:
-        return cached_result
-    try:
-        import urllib.request
+    with _OLLAMA_LOCK:
+        expires_at, cached_result = _OLLAMA_CACHE
+        if time.monotonic() < expires_at:
+            return cached_result
+        try:
+            import urllib.request
 
-        urllib.request.urlopen("http://localhost:11434", timeout=1)
-        result = True
-    except Exception:
-        result = False
-    _OLLAMA_CACHE = (time.monotonic() + _OLLAMA_TTL, result)
-    return result
+            urllib.request.urlopen("http://localhost:11434", timeout=1)
+            result = True
+        except Exception:
+            result = False
+        _OLLAMA_CACHE = (time.monotonic() + _OLLAMA_TTL, result)
+        return result

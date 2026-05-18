@@ -82,7 +82,10 @@ def _resolve_pricing(model: str) -> tuple[float, float]:
     custom_in = os.getenv(f"GATEWAY_PRICE_IN_{model.upper().replace('-', '_')}", "")
     custom_out = os.getenv(f"GATEWAY_PRICE_OUT_{model.upper().replace('-', '_')}", "")
     if custom_in and custom_out:
-        return float(custom_in), float(custom_out)
+        try:
+            return float(custom_in), float(custom_out)
+        except ValueError:
+            _log.warning("Invalid custom pricing env vars for model %r — falling back to defaults.", model)
     if model not in _DEFAULT_PRICING:
         _log.warning(
             "llm_inference_benchmarking.cost: no pricing entry for model %r — cost will be $0.00. "

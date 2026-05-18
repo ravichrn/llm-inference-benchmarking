@@ -7,7 +7,7 @@ name = "llm-inference-benchmarking"
 version = "0.1.0"
 description = "Cost-aware LLM routing gateway and benchmark CLI (single-module distribution)"
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13"
 dependencies = [
     "langchain-core",
     "langchain-openai",
@@ -19,7 +19,6 @@ dependencies = [
     "python-dotenv",
     "modal>=1.4.2",
     "httpx>=0.27.0",
-    "matplotlib>=3.8",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +30,8 @@ llm-gateway-bench = "llm_inference_benchmarking.benchmark:main"
 llm-load-test = "llm_inference_benchmarking.load_test:main"
 llm-pareto = "llm_inference_benchmarking.viz:main_pareto"
 llm-charts = "llm_inference_benchmarking.viz:main_charts"
+llm-eval = "llm_inference_benchmarking.eval:main"
+llm-ab = "llm_inference_benchmarking.ab_router:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

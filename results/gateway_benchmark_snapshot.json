@@ -1,0 +1,1442 @@
+[
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 7539,
+    "estimated_cost_usd": 0.000302,
+    "tokens_total": 203,
+    "iteration": 0,
+    "elapsed_ms_wall": 7962,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 7721,
+    "estimated_cost_usd": 0.0010452,
+    "tokens_total": 666,
+    "iteration": 0,
+    "elapsed_ms_wall": 7725,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1713,
+    "estimated_cost_usd": 0.00023,
+    "tokens_total": 158,
+    "iteration": 0,
+    "elapsed_ms_wall": 1717,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 2246,
+    "estimated_cost_usd": 0.0003484,
+    "tokens_total": 232,
+    "iteration": 1,
+    "elapsed_ms_wall": 2252,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 8401,
+    "estimated_cost_usd": 0.001754,
+    "tokens_total": 1109,
+    "iteration": 1,
+    "elapsed_ms_wall": 8406,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1401,
+    "estimated_cost_usd": 0.0002284,
+    "tokens_total": 157,
+    "iteration": 1,
+    "elapsed_ms_wall": 1406,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 2058,
+    "estimated_cost_usd": 0.0002972,
+    "tokens_total": 200,
+    "iteration": 2,
+    "elapsed_ms_wall": 2063,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 7573,
+    "estimated_cost_usd": 0.0016388,
+    "tokens_total": 1037,
+    "iteration": 2,
+    "elapsed_ms_wall": 7579,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1630,
+    "estimated_cost_usd": 0.0002236,
+    "tokens_total": 154,
+    "iteration": 2,
+    "elapsed_ms_wall": 1636,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 2146,
+    "estimated_cost_usd": 0.0003452,
+    "tokens_total": 230,
+    "iteration": 3,
+    "elapsed_ms_wall": 2151,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 6956,
+    "estimated_cost_usd": 0.0013748,
+    "tokens_total": 872,
+    "iteration": 3,
+    "elapsed_ms_wall": 6960,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1635,
+    "estimated_cost_usd": 0.0002092,
+    "tokens_total": 145,
+    "iteration": 3,
+    "elapsed_ms_wall": 1639,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 2029,
+    "estimated_cost_usd": 0.000302,
+    "tokens_total": 203,
+    "iteration": 4,
+    "elapsed_ms_wall": 2033,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 8321,
+    "estimated_cost_usd": 0.001674,
+    "tokens_total": 1059,
+    "iteration": 4,
+    "elapsed_ms_wall": 8326,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 2125,
+    "estimated_cost_usd": 0.0002252,
+    "tokens_total": 155,
+    "iteration": 4,
+    "elapsed_ms_wall": 2130,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 3685,
+    "estimated_cost_usd": 0.0003116,
+    "tokens_total": 209,
+    "iteration": 5,
+    "elapsed_ms_wall": 3690,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 9897,
+    "estimated_cost_usd": 0.0019572,
+    "tokens_total": 1236,
+    "iteration": 5,
+    "elapsed_ms_wall": 9903,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1620,
+    "estimated_cost_usd": 0.0002012,
+    "tokens_total": 140,
+    "iteration": 5,
+    "elapsed_ms_wall": 1627,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 3274,
+    "estimated_cost_usd": 0.0003452,
+    "tokens_total": 230,
+    "iteration": 6,
+    "elapsed_ms_wall": 3280,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 10177,
+    "estimated_cost_usd": 0.0018644,
+    "tokens_total": 1178,
+    "iteration": 6,
+    "elapsed_ms_wall": 10180,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1275,
+    "estimated_cost_usd": 0.0001772,
+    "tokens_total": 125,
+    "iteration": 6,
+    "elapsed_ms_wall": 1279,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 2163,
+    "estimated_cost_usd": 0.0003324,
+    "tokens_total": 222,
+    "iteration": 7,
+    "elapsed_ms_wall": 2170,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 6469,
+    "estimated_cost_usd": 0.001266,
+    "tokens_total": 804,
+    "iteration": 7,
+    "elapsed_ms_wall": 6476,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1719,
+    "estimated_cost_usd": 0.000206,
+    "tokens_total": 143,
+    "iteration": 7,
+    "elapsed_ms_wall": 1725,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 2269,
+    "estimated_cost_usd": 0.0003868,
+    "tokens_total": 256,
+    "iteration": 8,
+    "elapsed_ms_wall": 2274,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 5927,
+    "estimated_cost_usd": 0.0012436,
+    "tokens_total": 790,
+    "iteration": 8,
+    "elapsed_ms_wall": 5932,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1529,
+    "estimated_cost_usd": 0.0002092,
+    "tokens_total": 145,
+    "iteration": 8,
+    "elapsed_ms_wall": 1534,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1990,
+    "estimated_cost_usd": 0.0003532,
+    "tokens_total": 235,
+    "iteration": 9,
+    "elapsed_ms_wall": 1994,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 8049,
+    "estimated_cost_usd": 0.0016708,
+    "tokens_total": 1057,
+    "iteration": 9,
+    "elapsed_ms_wall": 8055,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "latency_ms": 1934,
+    "estimated_cost_usd": 0.0003036,
+    "tokens_total": 204,
+    "iteration": 9,
+    "elapsed_ms_wall": 1942,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 5741,
+    "estimated_cost_usd": 0.002534,
+    "tokens_total": 331,
+    "iteration": 0,
+    "elapsed_ms_wall": 5745,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 15907,
+    "estimated_cost_usd": 0.007594,
+    "tokens_total": 962,
+    "iteration": 0,
+    "elapsed_ms_wall": 15911,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 4162,
+    "estimated_cost_usd": 0.002038,
+    "tokens_total": 269,
+    "iteration": 0,
+    "elapsed_ms_wall": 4166,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 7235,
+    "estimated_cost_usd": 0.002982,
+    "tokens_total": 387,
+    "iteration": 1,
+    "elapsed_ms_wall": 7239,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 18021,
+    "estimated_cost_usd": 0.007858,
+    "tokens_total": 995,
+    "iteration": 1,
+    "elapsed_ms_wall": 18025,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 4296,
+    "estimated_cost_usd": 0.001662,
+    "tokens_total": 222,
+    "iteration": 1,
+    "elapsed_ms_wall": 4299,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 5335,
+    "estimated_cost_usd": 0.002118,
+    "tokens_total": 279,
+    "iteration": 2,
+    "elapsed_ms_wall": 5340,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 18003,
+    "estimated_cost_usd": 0.007946,
+    "tokens_total": 1006,
+    "iteration": 2,
+    "elapsed_ms_wall": 18007,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 2861,
+    "estimated_cost_usd": 0.001254,
+    "tokens_total": 171,
+    "iteration": 2,
+    "elapsed_ms_wall": 2865,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 6406,
+    "estimated_cost_usd": 0.002198,
+    "tokens_total": 289,
+    "iteration": 3,
+    "elapsed_ms_wall": 6411,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 18775,
+    "estimated_cost_usd": 0.008178,
+    "tokens_total": 1035,
+    "iteration": 3,
+    "elapsed_ms_wall": 18779,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 5124,
+    "estimated_cost_usd": 0.00215,
+    "tokens_total": 283,
+    "iteration": 3,
+    "elapsed_ms_wall": 5127,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 6540,
+    "estimated_cost_usd": 0.002438,
+    "tokens_total": 319,
+    "iteration": 4,
+    "elapsed_ms_wall": 6545,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 14947,
+    "estimated_cost_usd": 0.007386,
+    "tokens_total": 936,
+    "iteration": 4,
+    "elapsed_ms_wall": 14952,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 2972,
+    "estimated_cost_usd": 0.00127,
+    "tokens_total": 173,
+    "iteration": 4,
+    "elapsed_ms_wall": 2978,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 5412,
+    "estimated_cost_usd": 0.002326,
+    "tokens_total": 305,
+    "iteration": 5,
+    "elapsed_ms_wall": 5417,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 18737,
+    "estimated_cost_usd": 0.008178,
+    "tokens_total": 1035,
+    "iteration": 5,
+    "elapsed_ms_wall": 18741,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 3111,
+    "estimated_cost_usd": 0.001342,
+    "tokens_total": 182,
+    "iteration": 5,
+    "elapsed_ms_wall": 3116,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 4584,
+    "estimated_cost_usd": 0.001862,
+    "tokens_total": 247,
+    "iteration": 6,
+    "elapsed_ms_wall": 4588,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 16250,
+    "estimated_cost_usd": 0.007802,
+    "tokens_total": 988,
+    "iteration": 6,
+    "elapsed_ms_wall": 16254,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 3862,
+    "estimated_cost_usd": 0.001478,
+    "tokens_total": 199,
+    "iteration": 6,
+    "elapsed_ms_wall": 3867,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 4754,
+    "estimated_cost_usd": 0.002118,
+    "tokens_total": 279,
+    "iteration": 7,
+    "elapsed_ms_wall": 4758,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 15232,
+    "estimated_cost_usd": 0.00773,
+    "tokens_total": 979,
+    "iteration": 7,
+    "elapsed_ms_wall": 15238,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 3253,
+    "estimated_cost_usd": 0.00143,
+    "tokens_total": 193,
+    "iteration": 7,
+    "elapsed_ms_wall": 3259,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 5539,
+    "estimated_cost_usd": 0.00235,
+    "tokens_total": 308,
+    "iteration": 8,
+    "elapsed_ms_wall": 5544,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 18017,
+    "estimated_cost_usd": 0.008786,
+    "tokens_total": 1111,
+    "iteration": 8,
+    "elapsed_ms_wall": 18023,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 2959,
+    "estimated_cost_usd": 0.00135,
+    "tokens_total": 183,
+    "iteration": 8,
+    "elapsed_ms_wall": 2963,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 6812,
+    "estimated_cost_usd": 0.00247,
+    "tokens_total": 323,
+    "iteration": 9,
+    "elapsed_ms_wall": 6817,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 20152,
+    "estimated_cost_usd": 0.010154,
+    "tokens_total": 1282,
+    "iteration": 9,
+    "elapsed_ms_wall": 20157,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "latency_ms": 4150,
+    "estimated_cost_usd": 0.00175,
+    "tokens_total": 233,
+    "iteration": 9,
+    "elapsed_ms_wall": 4154,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 4199,
+    "estimated_cost_usd": 0.00167,
+    "tokens_total": 223,
+    "iteration": 0,
+    "elapsed_ms_wall": 4204,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 28666,
+    "estimated_cost_usd": 0.012794,
+    "tokens_total": 1612,
+    "iteration": 0,
+    "elapsed_ms_wall": 28671,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3584,
+    "estimated_cost_usd": 0.001422,
+    "tokens_total": 192,
+    "iteration": 0,
+    "elapsed_ms_wall": 3590,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 4398,
+    "estimated_cost_usd": 0.001734,
+    "tokens_total": 231,
+    "iteration": 1,
+    "elapsed_ms_wall": 4402,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 28148,
+    "estimated_cost_usd": 0.014698,
+    "tokens_total": 1850,
+    "iteration": 1,
+    "elapsed_ms_wall": 28152,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3986,
+    "estimated_cost_usd": 0.001494,
+    "tokens_total": 201,
+    "iteration": 1,
+    "elapsed_ms_wall": 3990,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 4094,
+    "estimated_cost_usd": 0.001478,
+    "tokens_total": 199,
+    "iteration": 2,
+    "elapsed_ms_wall": 4098,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 20922,
+    "estimated_cost_usd": 0.010994,
+    "tokens_total": 1387,
+    "iteration": 2,
+    "elapsed_ms_wall": 20927,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3184,
+    "estimated_cost_usd": 0.001262,
+    "tokens_total": 172,
+    "iteration": 2,
+    "elapsed_ms_wall": 3190,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 8137,
+    "estimated_cost_usd": 0.00227,
+    "tokens_total": 298,
+    "iteration": 3,
+    "elapsed_ms_wall": 8142,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 21259,
+    "estimated_cost_usd": 0.009826,
+    "tokens_total": 1241,
+    "iteration": 3,
+    "elapsed_ms_wall": 21265,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3867,
+    "estimated_cost_usd": 0.00147,
+    "tokens_total": 198,
+    "iteration": 3,
+    "elapsed_ms_wall": 3871,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 4844,
+    "estimated_cost_usd": 0.00203,
+    "tokens_total": 268,
+    "iteration": 4,
+    "elapsed_ms_wall": 4849,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 26327,
+    "estimated_cost_usd": 0.011602,
+    "tokens_total": 1463,
+    "iteration": 4,
+    "elapsed_ms_wall": 26332,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3476,
+    "estimated_cost_usd": 0.001558,
+    "tokens_total": 209,
+    "iteration": 4,
+    "elapsed_ms_wall": 3481,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 5591,
+    "estimated_cost_usd": 0.00175,
+    "tokens_total": 233,
+    "iteration": 5,
+    "elapsed_ms_wall": 5596,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 21381,
+    "estimated_cost_usd": 0.009986,
+    "tokens_total": 1261,
+    "iteration": 5,
+    "elapsed_ms_wall": 21387,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3322,
+    "estimated_cost_usd": 0.001046,
+    "tokens_total": 145,
+    "iteration": 5,
+    "elapsed_ms_wall": 3327,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 6102,
+    "estimated_cost_usd": 0.002318,
+    "tokens_total": 304,
+    "iteration": 6,
+    "elapsed_ms_wall": 6107,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 25017,
+    "estimated_cost_usd": 0.010778,
+    "tokens_total": 1360,
+    "iteration": 6,
+    "elapsed_ms_wall": 25022,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3574,
+    "estimated_cost_usd": 0.001134,
+    "tokens_total": 156,
+    "iteration": 6,
+    "elapsed_ms_wall": 3578,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 5731,
+    "estimated_cost_usd": 0.00219,
+    "tokens_total": 288,
+    "iteration": 7,
+    "elapsed_ms_wall": 5736,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 24890,
+    "estimated_cost_usd": 0.011802,
+    "tokens_total": 1488,
+    "iteration": 7,
+    "elapsed_ms_wall": 24895,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 4285,
+    "estimated_cost_usd": 0.001686,
+    "tokens_total": 225,
+    "iteration": 7,
+    "elapsed_ms_wall": 4290,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 4369,
+    "estimated_cost_usd": 0.00159,
+    "tokens_total": 213,
+    "iteration": 8,
+    "elapsed_ms_wall": 4374,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 25724,
+    "estimated_cost_usd": 0.011634,
+    "tokens_total": 1467,
+    "iteration": 8,
+    "elapsed_ms_wall": 25727,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3687,
+    "estimated_cost_usd": 0.001462,
+    "tokens_total": 197,
+    "iteration": 8,
+    "elapsed_ms_wall": 3692,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 5046,
+    "estimated_cost_usd": 0.001918,
+    "tokens_total": 254,
+    "iteration": 9,
+    "elapsed_ms_wall": 5049,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 22402,
+    "estimated_cost_usd": 0.010338,
+    "tokens_total": 1305,
+    "iteration": 9,
+    "elapsed_ms_wall": 22407,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "latency_ms": 3663,
+    "estimated_cost_usd": 0.001382,
+    "tokens_total": 187,
+    "iteration": 9,
+    "elapsed_ms_wall": 3666,
+    "quantization": {
+      "mode": "provider_managed",
+      "dtype": "",
+      "source": "openai",
+      "note": "Quantization is not user-configurable for hosted APIs in this harness."
+    }
+  }
+]

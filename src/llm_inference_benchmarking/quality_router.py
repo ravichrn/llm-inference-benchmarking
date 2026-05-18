@@ -72,7 +72,7 @@ def pick_cheapest_qualified(
     if min_score is None:
         min_score = float(os.getenv("GATEWAY_QUALITY_MIN_SCORE", "0.70") or "0.70")
     if results_dir is None:
-        results_dir = Path(os.getenv("GATEWAY_QUALITY_RESULTS_DIR", "results"))
+        results_dir = Path(os.getenv("GATEWAY_QUALITY_RESULTS_DIR", "results")).resolve()
 
     scores = _load_quality_scores(results_dir)
     if not scores:

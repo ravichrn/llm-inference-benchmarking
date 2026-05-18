@@ -37,3 +37,21 @@ class GatewayResult:
     tier: str
     usage: GatewayUsage
     raw: Any = None
+
+
+@dataclass
+class ABVariantResult:
+    tier: str
+    model: str
+    avg_score: float
+    avg_latency_ms: float
+    total_cost_usd: float
+
+
+@dataclass
+class ABResult:
+    variant_a: ABVariantResult
+    variant_b: ABVariantResult
+    win_rate_a: float  # fraction of prompts where A scored strictly higher than B
+    n_prompts: int
+    judge_model: str

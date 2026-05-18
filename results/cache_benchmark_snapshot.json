@@ -1,0 +1,80 @@
+[
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "prompt_chars": 272,
+    "cold_latency_ms": 18040,
+    "warm_latency_ms": 17694,
+    "latency_reduction_pct": 1.9,
+    "cold_cost_usd": 0.0036152,
+    "warm_cost_usd": 0.0034584,
+    "cold_cache_read_tokens": 0,
+    "warm_cache_read_tokens": 0
+  },
+  {
+    "tier": "cheap",
+    "backend": "openai",
+    "model": "gpt-5.4-mini",
+    "prompt_chars": 268,
+    "cold_latency_ms": 17848,
+    "warm_latency_ms": 16415,
+    "latency_reduction_pct": 8.0,
+    "cold_cost_usd": 0.0038456,
+    "warm_cost_usd": 0.0036488,
+    "cold_cache_read_tokens": 0,
+    "warm_cache_read_tokens": 0
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "prompt_chars": 272,
+    "cold_latency_ms": 67106,
+    "warm_latency_ms": 60123,
+    "latency_reduction_pct": 10.4,
+    "cold_cost_usd": 0.026916,
+    "warm_cost_usd": 0.025908,
+    "cold_cache_read_tokens": 0,
+    "warm_cache_read_tokens": 0
+  },
+  {
+    "tier": "balanced",
+    "backend": "openai",
+    "model": "gpt-5.4",
+    "prompt_chars": 268,
+    "cold_latency_ms": 63707,
+    "warm_latency_ms": 72125,
+    "latency_reduction_pct": -13.2,
+    "cold_cost_usd": 0.031284,
+    "warm_cost_usd": 0.036964,
+    "cold_cache_read_tokens": 0,
+    "warm_cache_read_tokens": 0
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "prompt_chars": 272,
+    "cold_latency_ms": 79815,
+    "warm_latency_ms": 59394,
+    "latency_reduction_pct": 25.6,
+    "cold_cost_usd": 0.034092,
+    "warm_cost_usd": 0.028788,
+    "cold_cache_read_tokens": 0,
+    "warm_cache_read_tokens": 0
+  },
+  {
+    "tier": "premium",
+    "backend": "openai",
+    "model": "gpt-5.5",
+    "prompt_chars": 268,
+    "cold_latency_ms": 110594,
+    "warm_latency_ms": 101890,
+    "latency_reduction_pct": 7.9,
+    "cold_cost_usd": 0.052764,
+    "warm_cost_usd": 0.049972,
+    "cold_cache_read_tokens": 0,
+    "warm_cache_read_tokens": 0
+  }
+]

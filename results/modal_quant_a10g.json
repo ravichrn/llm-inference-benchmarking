@@ -1,0 +1,1268 @@
+{
+  "benchmark": "modal_quant_benchmark",
+  "base_model": "unsloth/Meta-Llama-3.1-8B-Instruct",
+  "gpu": "A10G",
+  "gpu_cost_per_hr_usd": 1.1,
+  "total_wall_time_s": 482.1,
+  "modes_run": [
+    "fp16",
+    "vllm",
+    "gptq"
+  ],
+  "results": [
+    {
+      "quant_mode": "fp16",
+      "model_id": "unsloth/Meta-Llama-3.1-8B-Instruct",
+      "gpu": "NVIDIA A10",
+      "load_time_s": 13.37,
+      "memory": {
+        "model_weights_mb": 17320.5,
+        "reserved_mb": 17610.0
+      },
+      "latency": {
+        "max_new_tokens": 256,
+        "mean_ms": 9533.4,
+        "p50_ms": 9540.8,
+        "p95_ms": 9554.3,
+        "p99_ms": 9554.3,
+        "min_ms": 9491.8,
+        "max_ms": 9554.3,
+        "ttft_mean_ms": 41.4,
+        "ttft_p95_ms": 42.1,
+        "prefill_ms": 41.4,
+        "decode_ms_per_token": 37.22,
+        "prefill_decode_ratio": 1.11
+      },
+      "throughput": {
+        "output_tokens_per_sec": 26.7,
+        "total_tokens_per_sec": 27.5,
+        "max_new_tokens": 512
+      },
+      "batch_throughput": {
+        "batch1_output_tokens_per_sec": 26.7,
+        "batch4_output_tokens_per_sec": 104.0,
+        "batch8_output_tokens_per_sec": 203.2
+      },
+      "perplexity": {
+        "perplexity": 5.099,
+        "eval_tokens": 1024,
+        "dataset": "wikitext-2-raw-v1/test"
+      },
+      "quality": {
+        "mmlu_accuracy": 0.74,
+        "correct": 37,
+        "total": 50,
+        "mmlu_by_subject": {
+          "cs_programming": {
+            "accuracy": 0.7857,
+            "correct": 11,
+            "total": 14
+          },
+          "ml_deep_learning": {
+            "accuracy": 0.7,
+            "correct": 14,
+            "total": 20
+          },
+          "systems_networking": {
+            "accuracy": 0.6667,
+            "correct": 6,
+            "total": 9
+          },
+          "statistics_math": {
+            "accuracy": 0.8571,
+            "correct": 6,
+            "total": 7
+          }
+        },
+        "details": [
+          {
+            "question": "What is the output of `2 ** 10` in Python?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which sorting algorithm has O(n log n) average-case complexi\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "In SQL, which clause filters rows after grouping?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does the CAP theorem state a distributed system cannot \u2026",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which HTTP method is idempotent but not safe?",
+            "predicted": "C",
+            "expected": "D",
+            "correct": false,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What is the time complexity of binary search?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which Python data structure provides O(1) average-case looku\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does 'attention is all you need' refer to?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which data format is most efficient for sparse matrices?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which technique reduces model size by approximating weights \u2026",
+            "predicted": "D",
+            "expected": "C",
+            "correct": false,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does 'bits per weight' measure in quantized models?",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "In a min-heap, which element is always at the root?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What is the space complexity of merge sort?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which design pattern ensures only one instance of a class ex\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does ACID stand for in database transactions?",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which Python keyword is used to define a generator function?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is the output of `bool([])` in Python?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which algorithm finds the shortest path in an unweighted gra\u2026",
+            "predicted": "A",
+            "expected": "C",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does REST stand for?",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In Git, what does `git rebase` do?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which activation function outputs values strictly between 0 \u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does 'backpropagation' compute?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In statistics, what does a p-value below 0.05 typically indi\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which optimization algorithm adapts learning rates per param\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is gradient clipping used for?",
+            "predicted": "C",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which normalization technique normalizes across the feature \u2026",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does KV cache store during autoregressive inference?",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is perplexity a measure of?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In transformer models, what is the role of positional encodi\u2026",
+            "predicted": "C",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which loss function is standard for multi-class classificati\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is the vanishing gradient problem?",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which technique randomly drops neurons during training to re\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does a confusion matrix diagonal represent?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which metric is most suitable when class imbalance is severe\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does the term 'epoch' mean in neural network training?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which regularization technique adds the L2 norm of weights t\u2026",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What is transfer learning?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which layer type is most commonly used for sequence modeling\u2026",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What does 'overfitting' mean?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which ensemble method trains models sequentially, each corre\u2026",
+            "predicted": "D",
+            "expected": "C",
+            "correct": false,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which OSI layer does TCP operate at?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What does DNS stand for?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What is the purpose of a load balancer?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which consistency model guarantees all nodes see the same da\u2026",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What does a CDN primarily optimize?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "In HTTPS, which protocol handles encryption?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What is the time complexity of accessing an element in a has\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "Which scheduling algorithm minimizes average waiting time?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What is virtual memory?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What does a mutex prevent in concurrent programming?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          }
+        ]
+      },
+      "cost_per_1k_output_tokens_usd": 0.0114
+    },
+    {
+      "quant_mode": "vllm",
+      "model_id": "unsloth/Meta-Llama-3.1-8B-Instruct",
+      "gpu": "NVIDIA A10",
+      "load_time_s": 98.72,
+      "memory": {
+        "model_weights_mb": 0.0,
+        "reserved_mb": 0.0
+      },
+      "latency": {
+        "max_new_tokens": 256,
+        "mean_ms": 8776.2,
+        "p50_ms": 8773.0,
+        "p95_ms": 8877.4,
+        "p99_ms": 8877.4,
+        "min_ms": 8737.8,
+        "max_ms": 8877.4,
+        "ttft_mean_ms": null,
+        "ttft_p95_ms": null,
+        "prefill_ms": null,
+        "decode_ms_per_token": null,
+        "prefill_decode_ratio": null
+      },
+      "throughput": {
+        "output_tokens_per_sec": 29.1,
+        "max_new_tokens": 512
+      },
+      "batch_throughput": {
+        "batch1_output_tokens_per_sec": 29.1,
+        "batch4_output_tokens_per_sec": 113.0,
+        "batch8_output_tokens_per_sec": 222.3
+      },
+      "perplexity": null,
+      "quality": {
+        "mmlu_accuracy": 0.94,
+        "correct": 47,
+        "total": 50,
+        "mmlu_by_subject": {
+          "cs_programming": {
+            "accuracy": 0.8571,
+            "correct": 12,
+            "total": 14
+          },
+          "ml_deep_learning": {
+            "accuracy": 0.95,
+            "correct": 19,
+            "total": 20
+          },
+          "systems_networking": {
+            "accuracy": 1.0,
+            "correct": 9,
+            "total": 9
+          },
+          "statistics_math": {
+            "accuracy": 1.0,
+            "correct": 7,
+            "total": 7
+          }
+        },
+        "details": [
+          {
+            "question": "What is the output of `2 ** 10` in Python?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which sorting algorithm has O(n log n) average-case complexi\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "In SQL, which clause filters rows after grouping?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does the CAP theorem state a distributed system cannot \u2026",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which HTTP method is idempotent but not safe?",
+            "predicted": "C",
+            "expected": "D",
+            "correct": false,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What is the time complexity of binary search?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which Python data structure provides O(1) average-case looku\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does 'attention is all you need' refer to?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which data format is most efficient for sparse matrices?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which technique reduces model size by approximating weights \u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does 'bits per weight' measure in quantized models?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "In a min-heap, which element is always at the root?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What is the space complexity of merge sort?",
+            "predicted": "D",
+            "expected": "C",
+            "correct": false,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which design pattern ensures only one instance of a class ex\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does ACID stand for in database transactions?",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which Python keyword is used to define a generator function?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is the output of `bool([])` in Python?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which algorithm finds the shortest path in an unweighted gra\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does REST stand for?",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In Git, what does `git rebase` do?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which activation function outputs values strictly between 0 \u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does 'backpropagation' compute?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In statistics, what does a p-value below 0.05 typically indi\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which optimization algorithm adapts learning rates per param\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is gradient clipping used for?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which normalization technique normalizes across the feature \u2026",
+            "predicted": "D",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does KV cache store during autoregressive inference?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is perplexity a measure of?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In transformer models, what is the role of positional encodi\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which loss function is standard for multi-class classificati\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is the vanishing gradient problem?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which technique randomly drops neurons during training to re\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does a confusion matrix diagonal represent?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which metric is most suitable when class imbalance is severe\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does the term 'epoch' mean in neural network training?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which regularization technique adds the L2 norm of weights t\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What is transfer learning?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which layer type is most commonly used for sequence modeling\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What does 'overfitting' mean?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which ensemble method trains models sequentially, each corre\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which OSI layer does TCP operate at?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What does DNS stand for?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What is the purpose of a load balancer?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which consistency model guarantees all nodes see the same da\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What does a CDN primarily optimize?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "In HTTPS, which protocol handles encryption?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What is the time complexity of accessing an element in a has\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "Which scheduling algorithm minimizes average waiting time?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What is virtual memory?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What does a mutex prevent in concurrent programming?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          }
+        ]
+      },
+      "notes": "vLLM fp16 with continuous batching (PagedAttention). Perplexity is not computed \u2014 vLLM does not expose per-token NLL. Compare latency/throughput directly against the fp16 HuggingFace baseline.",
+      "cost_per_1k_output_tokens_usd": 0.0105
+    },
+    {
+      "quant_mode": "gptq",
+      "model_id": "hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4",
+      "gpu": "NVIDIA A10",
+      "load_time_s": 177.56,
+      "memory": {
+        "model_weights_mb": 5495.0,
+        "reserved_mb": 5488.0
+      },
+      "latency": {
+        "max_new_tokens": 256,
+        "mean_ms": 7374.7,
+        "p50_ms": 7353.8,
+        "p95_ms": 7486.4,
+        "p99_ms": 7486.4,
+        "min_ms": 7327.2,
+        "max_ms": 7486.4,
+        "ttft_mean_ms": 31.6,
+        "ttft_p95_ms": 32.8,
+        "prefill_ms": 31.6,
+        "decode_ms_per_token": 28.8,
+        "prefill_decode_ratio": 1.1
+      },
+      "throughput": {
+        "output_tokens_per_sec": 34.8,
+        "total_tokens_per_sec": 35.8,
+        "max_new_tokens": 512
+      },
+      "batch_throughput": {
+        "batch1_output_tokens_per_sec": 34.8,
+        "batch4_output_tokens_per_sec": 138.8,
+        "batch8_output_tokens_per_sec": 278.1
+      },
+      "perplexity": {
+        "perplexity": 5.307,
+        "eval_tokens": 1024,
+        "dataset": "wikitext-2-raw-v1/test"
+      },
+      "quality": {
+        "mmlu_accuracy": 0.76,
+        "correct": 38,
+        "total": 50,
+        "mmlu_by_subject": {
+          "cs_programming": {
+            "accuracy": 0.7857,
+            "correct": 11,
+            "total": 14
+          },
+          "ml_deep_learning": {
+            "accuracy": 0.7,
+            "correct": 14,
+            "total": 20
+          },
+          "systems_networking": {
+            "accuracy": 0.7778,
+            "correct": 7,
+            "total": 9
+          },
+          "statistics_math": {
+            "accuracy": 0.8571,
+            "correct": 6,
+            "total": 7
+          }
+        },
+        "details": [
+          {
+            "question": "What is the output of `2 ** 10` in Python?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which sorting algorithm has O(n log n) average-case complexi\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "In SQL, which clause filters rows after grouping?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does the CAP theorem state a distributed system cannot \u2026",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which HTTP method is idempotent but not safe?",
+            "predicted": "C",
+            "expected": "D",
+            "correct": false,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What is the time complexity of binary search?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which Python data structure provides O(1) average-case looku\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does 'attention is all you need' refer to?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which data format is most efficient for sparse matrices?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which technique reduces model size by approximating weights \u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does 'bits per weight' measure in quantized models?",
+            "predicted": "C",
+            "expected": "B",
+            "correct": false,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "In a min-heap, which element is always at the root?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What is the space complexity of merge sort?",
+            "predicted": "D",
+            "expected": "C",
+            "correct": false,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "Which design pattern ensures only one instance of a class ex\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "cs_programming"
+          },
+          {
+            "question": "What does ACID stand for in database transactions?",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which Python keyword is used to define a generator function?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is the output of `bool([])` in Python?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which algorithm finds the shortest path in an unweighted gra\u2026",
+            "predicted": "A",
+            "expected": "C",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does REST stand for?",
+            "predicted": "A",
+            "expected": "A",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In Git, what does `git rebase` do?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which activation function outputs values strictly between 0 \u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does 'backpropagation' compute?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In statistics, what does a p-value below 0.05 typically indi\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which optimization algorithm adapts learning rates per param\u2026",
+            "predicted": "D",
+            "expected": "C",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is gradient clipping used for?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which normalization technique normalizes across the feature \u2026",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does KV cache store during autoregressive inference?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is perplexity a measure of?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "In transformer models, what is the role of positional encodi\u2026",
+            "predicted": "C",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which loss function is standard for multi-class classificati\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What is the vanishing gradient problem?",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which technique randomly drops neurons during training to re\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does a confusion matrix diagonal represent?",
+            "predicted": "A",
+            "expected": "C",
+            "correct": false,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "Which metric is most suitable when class imbalance is severe\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "ml_deep_learning"
+          },
+          {
+            "question": "What does the term 'epoch' mean in neural network training?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which regularization technique adds the L2 norm of weights t\u2026",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What is transfer learning?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which layer type is most commonly used for sequence modeling\u2026",
+            "predicted": "A",
+            "expected": "B",
+            "correct": false,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What does 'overfitting' mean?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which ensemble method trains models sequentially, each corre\u2026",
+            "predicted": "D",
+            "expected": "C",
+            "correct": false,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which OSI layer does TCP operate at?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What does DNS stand for?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "What is the purpose of a load balancer?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "systems_networking"
+          },
+          {
+            "question": "Which consistency model guarantees all nodes see the same da\u2026",
+            "predicted": "C",
+            "expected": "B",
+            "correct": false,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What does a CDN primarily optimize?",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "In HTTPS, which protocol handles encryption?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What is the time complexity of accessing an element in a has\u2026",
+            "predicted": "C",
+            "expected": "C",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "Which scheduling algorithm minimizes average waiting time?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What is virtual memory?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          },
+          {
+            "question": "What does a mutex prevent in concurrent programming?",
+            "predicted": "B",
+            "expected": "B",
+            "correct": true,
+            "subject": "statistics_math"
+          }
+        ]
+      },
+      "notes": "GPTQ (Generative Pre-Trained Transformer Quantization) is a post-training INT4 quantization method using second-order weight updates (OBQ). Loaded from a pre-quantized checkpoint via auto-gptq. On A10G, fused CUDA kernels are used when exllama backend is available; otherwise falls back to triton (slower). Compare against AWQ \u2014 both are INT4 but GPTQ uses row-wise calibration vs AWQ's activation-aware column scaling.",
+      "cost_per_1k_output_tokens_usd": 0.0088
+    }
+  ]
+}

@@ -20,6 +20,10 @@ from llm_inference_benchmarking.types import (
 _log = logging.getLogger(__name__)
 
 
+class BudgetExceededError(RuntimeError):
+    """Raised when the daily hard spend cap is reached."""
+
+
 class GatewayClient:
     """Provider-agnostic inference client with tiered routing + telemetry."""
 
@@ -149,7 +153,7 @@ def _apply_budget_policy(policy: Any, decision: GatewayDecision) -> GatewayDecis
         return decision
     today_spend = get_today_success_cost_usd()
     if hard_cap and today_spend >= hard_cap:
-        raise RuntimeError(
+        raise BudgetExceededError(
             f"Daily hard cap of ${hard_cap:.2f} reached (spent ${today_spend:.4f}). Requests blocked until tomorrow."
         )
     if soft_cap and today_spend >= soft_cap and decision.tier == "premium":
