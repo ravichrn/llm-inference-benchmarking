@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -34,7 +35,10 @@ Task type: {task_type}
 Reference answer: {reference}
 Model response: {response}"""
 
-_REGRESSION_THRESHOLD = 0.5
+
+def _regression_threshold() -> float:
+    """Read regression threshold from env, defaulting to 0.5."""
+    return float(os.getenv("EVAL_REGRESSION_THRESHOLD", "0.5"))
 
 
 def build_judge_prompt(task_type: str, reference: str, response: str) -> str:
@@ -56,6 +60,77 @@ def parse_judge_response(raw: str) -> tuple[int, str]:
         return 0, "parse error"
 
 
+# ---------------------------------------------------------------------------
+# Deterministic scoring helpers
+# ---------------------------------------------------------------------------
+
+_CHOICE_LETTERS = {"A", "B", "C", "D"}
+
+
+def score_exact_match(response: str, choices: list[str], correct: str) -> float:
+    """Return 1.0 if the response selects the correct MMLU choice letter, else 0.0.
+
+    Checks for a bare letter (A/B/C/D) in the first non-whitespace characters
+    of the response, then falls back to checking the full text.
+    """
+    text = response.strip().upper()
+    first_token = text.split()[0] if text.split() else ""
+    # Strip trailing punctuation from first token
+    first_token = first_token.rstrip(".),:;")
+    if first_token in _CHOICE_LETTERS:
+        return 1.0 if first_token == correct.upper() else 0.0
+    # Fallback: check if correct letter appears as a standalone word
+    import re as _re
+
+    if _re.search(rf"\b{correct.upper()}\b", text):
+        return 1.0
+    return 0.0
+
+
+def score_bertscore(response: str, reference: str) -> float | None:
+    """BERTScore F1 against reference. Returns None if bert-score is not installed."""
+    try:
+        from bert_score import score as _bs_score  # type: ignore[import]
+    except ImportError:
+        _log.warning("bert-score not installed; skipping BERTScore gate signal")
+        return None
+    try:
+        model = os.getenv("EVAL_BERTSCORE_MODEL", "distilbert-base-uncased")
+        _P, _R, F = _bs_score([response], [reference], model_type=model, verbose=False)
+        return float(F[0])
+    except Exception as exc:
+        _log.warning("BERTScore failed: %s", exc)
+        return None
+
+
+# Default gate thresholds: judge score >= 6.0 per task type.
+# Override via EVAL_GATE_THRESHOLD env var (applies to all task types).
+def _gate_thresholds() -> dict[str, float]:
+    default = float(os.getenv("EVAL_GATE_THRESHOLD", "6.0"))
+    return {"__default__": default}
+
+
+def _check_gate(summary: dict[str, Any], thresholds: dict[str, float]) -> tuple[bool, list[str]]:
+    """Return (passed, failure_reasons) by comparing task-type scores against thresholds."""
+    by_task = summary.get("by_task_type", {})
+    default_thresh = thresholds.get("__default__", 6.0)
+    failures: list[str] = []
+    for task_type, score in by_task.items():
+        thresh = thresholds.get(task_type, default_thresh)
+        if score < thresh:
+            failures.append(f"{task_type}: {score:.2f} < {thresh:.2f}")
+    return (len(failures) == 0, failures)
+
+
+def _print_gate_verdict(passed: bool, failures: list[str]) -> None:
+    if passed:
+        print("\n  ✓ Gate PASSED — all task-type scores meet threshold.")
+    else:
+        print("\n  ✗ Gate FAILED — the following task types are below threshold:")
+        for f in failures:
+            print(f"      {f}")
+
+
 def _load_prompts(prompts_path: Path) -> list[dict]:
     with prompts_path.open() as f:
         return json.load(f)
@@ -72,6 +147,7 @@ def run_eval(
     results_dir: Path,
     judge_tier: str = "cheap",
     dry_run: bool = False,
+    gate: bool = False,
 ) -> dict[str, Any]:
     """Run the eval harness. Returns the full result dict."""
     prompts = _load_prompts(prompts_path)
@@ -155,12 +231,19 @@ def run_eval(
         "by_task_type": {tt: round(sum(sc) / len(sc), 2) for tt, sc in by_type.items()},
     }
 
+    gate_passed = True
+    gate_failures: list[str] = []
+    if gate:
+        gate_passed, gate_failures = _check_gate(summary, _gate_thresholds())
+
     output = {
         "run_id": run_id,
         "tier": tier,
         "model": model_used,
         "results": results,
         "summary": summary,
+        "gate_passed": gate_passed,
+        "gate_failures": gate_failures,
     }
 
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -194,7 +277,7 @@ def print_regression_report(current: dict[str, Any], prior: dict[str, Any]) -> N
             continue
         delta = c - p
         flag = ""
-        if delta < -_REGRESSION_THRESHOLD:
+        if delta < -_regression_threshold():
             flag = "  ⚠ REGRESSION"
             any_regression = True
         print(f"    {tt:<25} {p} → {c}  ({delta:+.2f}){flag}")
@@ -215,7 +298,21 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("results"), help="Directory to write result JSON")
     parser.add_argument("--compare", type=Path, default=None, help="Path to prior eval JSON for regression comparison")
     parser.add_argument("--dry-run", action="store_true", help="Print what would run without making API calls")
+    parser.add_argument(
+        "--gate",
+        action="store_true",
+        help="Enable release gate: exit 1 if any task type is below threshold",
+    )
+    parser.add_argument(
+        "--gate-threshold",
+        type=float,
+        default=None,
+        help="Minimum judge score per task type for gate (default: from EVAL_GATE_THRESHOLD env, else 6.0)",
+    )
     args = parser.parse_args()
+
+    if args.gate_threshold is not None:
+        os.environ["EVAL_GATE_THRESHOLD"] = str(args.gate_threshold)
 
     result = run_eval(
         tier=args.tier,
@@ -223,12 +320,18 @@ def main() -> None:
         results_dir=args.output,
         judge_tier=args.judge_tier,
         dry_run=args.dry_run,
+        gate=args.gate,
     )
 
     if args.dry_run or not result:
         return
 
     print_summary(result)
+
+    if args.gate:
+        _print_gate_verdict(result.get("gate_passed", True), result.get("gate_failures", []))
+        if not result.get("gate_passed", True):
+            raise SystemExit(1)
 
     compare_path = args.compare
     if compare_path is None:

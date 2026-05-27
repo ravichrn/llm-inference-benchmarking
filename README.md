@@ -1,6 +1,6 @@
 # llm-inference-benchmarking
 
-Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, throughput, cost, and quality across routing tiers and quantization formats — including zero-shot MMLU evaluation, task-specific LLM-as-judge eval, and cross-provider A/B testing.
+Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, throughput, cost, and quality across routing tiers and quantization formats — including zero-shot MMLU evaluation, task-specific LLM-as-judge eval with a deterministic release gate, FLOPs roofline analysis, latency-cost autoscaler signal, and cross-provider A/B testing.
 
 ---
 
@@ -17,6 +17,8 @@ Rate limiter                 ←─ GATEWAY_RATE_LIMIT_RPM per IP (token bucket 
         ▼
 RoutingPolicyEngine          ←─ GATEWAY_FORCE_TIER env var or auto heuristic
         │                          (prompt length + role + keyword signals)
+        │                          if metadata.live_metrics present → autoscaler_signal()
+        │                          biases tier (up→premium, down→cheap, hold→heuristics)
         │  resolves: tier → backend → model
         ▼
 Budget policy check          ←─ daily hard cap (block) / soft cap (downgrade tier)
@@ -61,10 +63,13 @@ GPU containers per mode, run in parallel
         ├─ Latency     (mean / P95 / TTFT over 5 bench prompts × 3 iterations)
         ├─ Throughput  (batch 1 / 4 / 8 output tok/s)
         ├─ Perplexity  (WikiText-2, HF modes only)
-        └─ MMLU        (50-question log-prob scoring, zero-shot)
+        ├─ MMLU        (50-question log-prob scoring, zero-shot)
+        └─ FLOPs funnel  ←─ arithmetic intensity, roofline bound, achieved MFU %,
+                            compute vs memory bound, peak theoretical tok/s
         │
         ▼
 Results merged → results/modal_quant_<gpu>.json
+        Each mode entry gains a "flops_funnel" sub-dict with roofline analysis.
 ```
 
 ### Eval Harness + A/B Testing
@@ -95,9 +100,9 @@ TTFT ≈ prefill duration. GPTQ has the fastest prefill (Marlin INT4 kernels); N
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | **tensor-parallel** | vLLM (2× A100-80GB) | **1,762** | — | **146.7** | **1,106.0** | 2× 80 GB | **94%** | $0.0042 ¹ |
 | **fp8** | vLLM | 4,665 | — | 54.9 | 420.4 | ~16 GB | ⚠ 6% | $0.0056 |
-| **gptq** | HuggingFace | **7,375** | **31.6** | **34.8** | 278.1 | 5,495 | 76% | **$0.0088** |
-| **vllm** | vLLM | 8,776 | — | 29.1 | 222.3 | ~16 GB | **94%** | $0.0101 |
-| **fp16** | HuggingFace | 9,533 | 41.4 | 26.7 | 203.2 | 17,321 | 74% | $0.0110 |
+| **gptq** | HuggingFace | **7,375** | **37.1** | **28.9** | 278.1 | 5,495 | 92% | **$0.0088** |
+| **vllm** | vLLM | 8,776 | 37.8 | 29.2 | 222.3 | 19,154 | **94%** | $0.0101 |
+| **fp16** | HuggingFace | 9,522 | 41.5 | 26.5 | 202.9 | 17,321 | **94%** | $0.0110 |
 | **nf4** | HuggingFace | 10,403 | 145.6 | 25.3 | 54.9 | 7,787 | 74% | $0.0121 |
 | **nf4-dq** | HuggingFace | 16,400 | 142.7 | 15.7 | 56.4 | 5,541 | 74% | $0.0195 |
 | **int8** | HuggingFace | 30,846 | 163.7 | 8.3 | 60.1 | 12,296 | 74% | $0.0368 |
@@ -113,11 +118,11 @@ TTFT ≈ prefill duration. GPTQ has the fastest prefill (Marlin INT4 kernels); N
 
 | Mode | CS & Programming | ML & Deep Learning | Systems & Networking | Statistics & Math | Overall |
 |---|---:|---:|---:|---:|---:|
+| **fp16** | 85.7% | **95.0%** | **100%** | **100%** | **94%** |
 | **vllm** | 85.7% | **95.0%** | **100%** | **100%** | **94%** |
-| fp16 | 78.6% | 70.0% | 66.7% | 85.7% | 74% |
-| gptq | 78.6% | 70.0% | 77.8% | 85.7% | 76% |
+| gptq | 85.7% | 95.0% | 100% | 85.7% | 92% |
 
-> vLLM scores highest across all subjects. GPTQ INT4 compression hurts ML/DL questions most — quantization degrades nuanced reasoning more than factual recall.
+> All three modes score within 2pp overall. GPTQ misses one statistics question (6/7 vs 7/7) — the only difference from fp16. Confirms INT4 quantization does not meaningfully degrade accuracy on this subset.
 
 ### Decision guide
 
@@ -126,7 +131,7 @@ TTFT ≈ prefill duration. GPTQ has the fastest prefill (Marlin INT4 kernels); N
 | Multi-GPU batch serving (2× A100-80GB) | tensor-parallel |
 | H100 single-GPU production | fp8 |
 | Single GPU, lowest latency | gptq |
-| Single GPU, best MMLU accuracy | vllm |
+| Single GPU, best throughput + accuracy | vllm |
 | VRAM ≤ 8 GB | nf4 |
 | VRAM ≤ 6 GB | nf4-dq |
 | Baseline / reproducibility reference | fp16 |
@@ -176,24 +181,25 @@ Raw: [cheap](results/load_test_cheap.json) · [balanced](results/load_test_balan
 
 ### LLM Eval Harness
 
-**Results** (n=50, judge=`gpt-5.4-mini`; raw data: [eval cheap](results/eval_2026-05-18T01-10-11.json) · [eval premium](results/eval_2026-05-18T01-17-38.json)):
+**Results** (n=50, judge=`gpt-5.4-mini`; raw data: [run 1](results/eval_2026-05-27T01-00-17.json) · [run 2](results/eval_2026-05-27T01-01-58.json) · [run 3](results/eval_2026-05-27T01-02-56.json)):
 
-| Tier | Model | Avg score | Latency (ms) | Cost/run |
-|---|---|---:|---:|---:|
-| cheap | gpt-5.4-mini | 9.10/10 | 1,408 | $0.003 |
-| premium | claude-opus-4-6 | 8.72/10 | 9,423 | $1.64 |
+| Tier | Model | Avg score | Latency (ms) | Cost/run | Gate |
+|---|---|---:|---:|---:|---:|
+| cheap | gpt-5.4-mini | 9.06/10 | 1,506 | $0.021 | ✓ passed |
 
-Score by task type:
+Score by task type (avg across 3 runs):
 
-| Task type | cheap | premium | Δ |
-|---|---:|---:|---:|
-| code | 8.4 | 7.2 | −1.2 ⚠ |
-| instruction_following | 7.6 | 8.1 | +0.5 |
-| qa | 9.8 | 9.8 | 0.0 |
-| reasoning | 9.9 | 9.2 | −0.7 ⚠ |
-| summarization | 9.1 | 9.3 | +0.2 |
+| Task type | Score | Notes |
+|---|---:|---|
+| qa | 9.8/10 | Consistently high |
+| reasoning | 9.7/10 | Consistently high |
+| summarization | 9.2/10 | Stable |
+| code | 8.2/10 | Lowest — judge may favor terse responses |
+| instruction_following | 8.4/10 | Stable |
 
-> Regressions on code/reasoning reflect judge bias (gpt-5.4-mini scores OpenAI-style responses higher). The A/B run below uses an independent judge for a fairer cross-provider comparison.
+> All three gate runs passed (default threshold 6.0). Code and instruction_following are the soft spots but well above the gate floor. Cost/run increased vs earlier results because `total_cost_usd` now includes the judge call cost.
+
+> Earlier cross-provider comparison (cheap vs claude-opus-4-6 premium) is in the A/B results below — cheap scores higher on average at 132× lower cost.
 
 ### A/B Testing
 
@@ -297,6 +303,13 @@ uv run python -m llm_inference_benchmarking.eval --tier cheap
 uv run python -m llm_inference_benchmarking.eval --tier cheap --dry-run
 ```
 
+Add `--gate` to block on quality regression (exit 1 if any task type scores below `EVAL_GATE_THRESHOLD`, default `6.0`):
+
+```bash
+uv run python -m llm_inference_benchmarking.eval --tier cheap --gate
+uv run python -m llm_inference_benchmarking.eval --tier cheap --gate --gate-threshold 7.0
+```
+
 ### A/B Testing
 
 Routes the same 50 prompts through two variants in parallel, scores both with an independent LLM judge, and reports win rate + cost delta. Also available as `POST /ab` via the gateway API.
@@ -306,6 +319,14 @@ uv run python -m llm_inference_benchmarking.ab_router \
   --variant-a '{"tier":"cheap"}' --variant-b '{"tier":"balanced"}' \
   --output results/ab_out.json
 ```
+
+### FLOPs Roofline Analysis
+
+Runs automatically alongside every quantization benchmark — no separate command. Each mode entry in the results JSON gains a `flops_funnel` sub-dict with arithmetic intensity, roofline bound, achieved MFU %, and compute vs memory bound classification.
+
+### Latency-Cost Autoscaler Signal
+
+Pass `live_metrics` in a request's `metadata` to bias `auto` tier routing (score < 0.4 → premium, > 0.8 → cheap). Env vars: `AUTOSCALER_UP_THRESHOLD` (0.4), `AUTOSCALER_DOWN_THRESHOLD` (0.8), `AUTOSCALER_LATENCY_WEIGHT` (0.6), `AUTOSCALER_COST_WEIGHT` (0.4).
 
 ---
 

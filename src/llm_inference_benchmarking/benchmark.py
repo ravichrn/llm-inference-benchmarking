@@ -1,11 +1,11 @@
 """Independent benchmark runner for gateway tiers/backends."""
 
 import argparse
+import http.client
 import json
 import os
 import re
 import time
-import urllib.request
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -192,14 +192,12 @@ def _quantization_metadata(backend: str, model: str) -> dict:
 
 def _ollama_quant_from_api(model: str) -> str:
     try:
-        req = urllib.request.Request(
-            "http://localhost:11434/api/show",
-            data=json.dumps({"model": model}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+        body = json.dumps({"model": model}).encode("utf-8")
+        conn = http.client.HTTPConnection("localhost", 11434, timeout=3)
+        conn.request("POST", "/api/show", body=body, headers={"Content-Type": "application/json"})
+        resp = conn.getresponse()
+        payload = json.loads(resp.read().decode("utf-8"))
+        conn.close()
         details = payload.get("details", {}) if isinstance(payload, dict) else {}
         return str(details.get("quantization_level", "")).upper()
     except Exception:

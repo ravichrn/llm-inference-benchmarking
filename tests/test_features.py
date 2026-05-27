@@ -466,3 +466,183 @@ def test_run_cache_benchmark_output_schema(tmp_path: Path):
     }
     for row in rows:
         assert required_keys.issubset(row.keys())
+
+
+# ---------------------------------------------------------------------------
+# flops.py: FLOPs funnel and roofline
+# ---------------------------------------------------------------------------
+
+
+def test_model_flops_per_token_known_value():
+    from llm_inference_benchmarking.flops import model_flops_per_token
+
+    # Llama-3.1-8B: 6 * 8B = 48B FLOPs for FFN+projections per token
+    flops = model_flops_per_token(num_params=8_000_000_000, num_layers=32, seq_len=512, hidden_dim=4096)
+    # Should be >= 48B (attention adds a bit on top)
+    assert flops >= 48e9
+    # Sanity: shouldn't be more than 2x the base estimate
+    assert flops < 100e9
+
+
+def test_roofline_returns_correct_bound_memory():
+    from llm_inference_benchmarking.flops import roofline
+
+    # Very low arithmetic intensity → memory bound
+    result = roofline(flops_per_token=1e9, dtype_bytes=2.0, achieved_tps=50.0, gpu="A10G")
+    assert result["bound"] == "memory"
+    assert "achieved_mfu_pct" in result
+    assert result["achieved_mfu_pct"] >= 0
+
+
+def test_roofline_unknown_gpu_returns_safe_default():
+    from llm_inference_benchmarking.flops import roofline
+
+    result = roofline(flops_per_token=1e12, dtype_bytes=2.0, achieved_tps=100.0, gpu="UnknownGPU-9000")
+    assert result["bound"] == "unknown"
+    assert "note" in result
+
+
+def test_build_flops_funnel_attaches_to_result():
+    from llm_inference_benchmarking.flops import build_flops_funnel
+
+    mode_result = {"throughput": {"output_tokens_per_sec": 50.0}, "quant_mode": "fp16"}
+    cfg = {"num_params": 8_000_000_000, "num_layers": 32, "hidden": 4096, "seq_len": 512}
+    out = build_flops_funnel(mode_result, cfg, "A10G", "fp16")
+    assert "flops_funnel" in out
+    ff = out["flops_funnel"]
+    assert "achieved_mfu_pct" in ff
+    assert "bound" in ff
+    assert ff["achieved_tps"] == 50.0
+
+
+def test_build_flops_funnel_safe_on_zero_tps():
+    from llm_inference_benchmarking.flops import build_flops_funnel
+
+    mode_result = {"throughput": {"output_tokens_per_sec": 0.0}}
+    out = build_flops_funnel(mode_result, {}, "A10G", "fp16")
+    # Should return unchanged result without crashing
+    assert "flops_funnel" not in out
+
+
+# ---------------------------------------------------------------------------
+# autoscaler.py + cost.py: latency-cost signal
+# ---------------------------------------------------------------------------
+
+
+def test_compute_serving_cost_returns_expected_keys():
+    from llm_inference_benchmarking.cost import compute_serving_cost
+
+    r = compute_serving_cost(latency_ms=200, output_tps=50.0, batch_size=4, gpu_cost_per_hr=1.10, utilization=0.8)
+    assert {"cost_per_request_usd", "latency_cost_score", "latency_ms", "batch_size"}.issubset(r.keys())
+
+
+def test_compute_serving_cost_higher_latency_increases_score():
+    from llm_inference_benchmarking.cost import compute_serving_cost
+
+    low = compute_serving_cost(latency_ms=100, output_tps=50.0, batch_size=1, gpu_cost_per_hr=1.10)
+    high = compute_serving_cost(latency_ms=4000, output_tps=50.0, batch_size=1, gpu_cost_per_hr=1.10)
+    assert high["latency_cost_score"] > low["latency_cost_score"]
+
+
+def test_autoscaler_signal_scale_up_on_low_load():
+    from llm_inference_benchmarking.autoscaler import autoscaler_signal
+
+    sig = autoscaler_signal(
+        {"p99_latency_ms": 50, "output_tps": 200, "batch_size": 1, "utilization": 0.05, "gpu_cost_per_hr": 1.10}
+    )
+    assert sig["scale_direction"] == "up"
+    assert sig["recommended_batch_size"] > 1
+
+
+def test_autoscaler_signal_scale_down_on_high_load():
+    from llm_inference_benchmarking.autoscaler import autoscaler_signal
+
+    # Latency at ceiling (norm=1.0) + high GPU cost + low utilization → score > 0.8 → down
+    sig = autoscaler_signal(
+        {"p99_latency_ms": 5000, "output_tps": 5, "batch_size": 16, "utilization": 0.1, "gpu_cost_per_hr": 10.0}
+    )
+    assert sig["scale_direction"] == "down"
+    assert sig["recommended_batch_size"] < 16
+
+
+def test_autoscaler_signal_hold_in_nominal_range():
+    from llm_inference_benchmarking.autoscaler import autoscaler_signal
+
+    # norm_lat = 3500/5000 = 0.7, cost is low -> composite ~0.5 (hold zone 0.4-0.8)
+    sig = autoscaler_signal(
+        {"p99_latency_ms": 3500, "output_tps": 80, "batch_size": 4, "utilization": 0.5, "gpu_cost_per_hr": 1.10}
+    )
+    assert sig["scale_direction"] == "hold"
+
+
+def test_autoscaler_signal_all_keys_present():
+    from llm_inference_benchmarking.autoscaler import autoscaler_signal
+
+    sig = autoscaler_signal(
+        {"p99_latency_ms": 300, "output_tps": 80, "batch_size": 4, "utilization": 0.55, "gpu_cost_per_hr": 1.10}
+    )
+    assert {"scale_direction", "score", "recommended_batch_size", "reason", "cost_per_request_usd"}.issubset(sig.keys())
+
+
+def test_policy_auto_tier_uses_autoscaler_scale_up():
+    from unittest.mock import patch
+
+    from llm_inference_benchmarking.policy import RoutingPolicyEngine
+    from llm_inference_benchmarking.types import GatewayRequest
+
+    with patch("llm_inference_benchmarking.autoscaler.autoscaler_signal") as mock_sig:
+        mock_sig.return_value = {
+            "scale_direction": "up",
+            "score": 0.2,
+            "recommended_batch_size": 2,
+            "reason": "low load",
+            "cost_per_request_usd": 0.0001,
+        }
+        engine = RoutingPolicyEngine()
+        req = GatewayRequest(
+            prompt="test",
+            tier="auto",
+            metadata={
+                "live_metrics": {
+                    "p99_latency_ms": 50,
+                    "output_tps": 200,
+                    "batch_size": 1,
+                    "utilization": 0.05,
+                    "gpu_cost_per_hr": 1.10,
+                }
+            },
+        )
+        decision = engine.decide(req)
+    assert decision.tier == "premium"
+
+
+def test_policy_auto_tier_uses_autoscaler_scale_down():
+    from unittest.mock import patch
+
+    from llm_inference_benchmarking.policy import RoutingPolicyEngine
+    from llm_inference_benchmarking.types import GatewayRequest
+
+    with patch("llm_inference_benchmarking.autoscaler.autoscaler_signal") as mock_sig:
+        mock_sig.return_value = {
+            "scale_direction": "down",
+            "score": 0.9,
+            "recommended_batch_size": 2,
+            "reason": "overloaded",
+            "cost_per_request_usd": 0.001,
+        }
+        engine = RoutingPolicyEngine()
+        req = GatewayRequest(
+            prompt="test",
+            tier="auto",
+            metadata={
+                "live_metrics": {
+                    "p99_latency_ms": 4800,
+                    "output_tps": 5,
+                    "batch_size": 16,
+                    "utilization": 0.98,
+                    "gpu_cost_per_hr": 1.10,
+                }
+            },
+        )
+        decision = engine.decide(req)
+    assert decision.tier == "cheap"

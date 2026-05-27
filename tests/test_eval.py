@@ -6,11 +6,16 @@ import json
 from unittest.mock import MagicMock, patch
 
 from llm_inference_benchmarking.eval import (
-    _REGRESSION_THRESHOLD,
+    _check_gate,
+    _gate_thresholds,
+    _print_gate_verdict,
+    _regression_threshold,
     build_judge_prompt,
     parse_judge_response,
     print_regression_report,
     run_eval,
+    score_bertscore,
+    score_exact_match,
 )
 
 # ── build_judge_prompt ────────────────────────────────────────────────────────
@@ -101,11 +106,77 @@ def test_regression_detection_silent_on_improvement(capsys):
 
 def test_regression_threshold_boundary(capsys):
     # Exactly at threshold — should not fire
-    current = _make_result({"qa": 7.0 - _REGRESSION_THRESHOLD}, "eval_new")
+    current = _make_result({"qa": 7.0 - _regression_threshold()}, "eval_new")
     prior = _make_result({"qa": 7.0}, "eval_old")
     print_regression_report(current, prior)
     captured = capsys.readouterr()
     assert "REGRESSION" not in captured.out
+
+
+def test_regression_threshold_env_override(monkeypatch, capsys):
+    monkeypatch.setenv("EVAL_REGRESSION_THRESHOLD", "2.0")
+    # Delta of -1.5 is below default 0.5 but above custom 2.0 — should NOT fire
+    current = _make_result({"qa": 5.5}, "eval_new")
+    prior = _make_result({"qa": 7.0}, "eval_old")
+    print_regression_report(current, prior)
+    captured = capsys.readouterr()
+    assert "REGRESSION" not in captured.out
+
+
+# ── eval gate ────────────────────────────────────────────────────────────────
+
+
+def test_score_exact_match_correct():
+    assert score_exact_match("A", ["opt1", "opt2", "opt3", "opt4"], "A") == 1.0
+
+
+def test_score_exact_match_incorrect():
+    assert score_exact_match("B", ["opt1", "opt2", "opt3", "opt4"], "A") == 0.0
+
+
+def test_score_exact_match_with_punctuation():
+    assert score_exact_match("C.", ["opt1", "opt2", "opt3", "opt4"], "C") == 1.0
+
+
+def test_score_bertscore_returns_none_when_not_installed(monkeypatch):
+    import sys
+
+    # Ensure bert_score is not importable
+    monkeypatch.setitem(sys.modules, "bert_score", None)
+    result = score_bertscore("some response", "some reference")
+    assert result is None
+
+
+def test_check_gate_passes_above_threshold():
+    summary = {"by_task_type": {"qa": 7.5, "reasoning": 8.0}}
+    passed, failures = _check_gate(summary, {"__default__": 6.0})
+    assert passed is True
+    assert failures == []
+
+
+def test_check_gate_fails_below_threshold():
+    summary = {"by_task_type": {"qa": 5.0, "reasoning": 8.0}}
+    passed, failures = _check_gate(summary, {"__default__": 6.0})
+    assert passed is False
+    assert any("qa" in f for f in failures)
+
+
+def test_gate_thresholds_env_override(monkeypatch):
+    monkeypatch.setenv("EVAL_GATE_THRESHOLD", "7.5")
+    thresholds = _gate_thresholds()
+    assert thresholds["__default__"] == 7.5
+
+
+def test_print_gate_verdict_pass(capsys):
+    _print_gate_verdict(True, [])
+    assert "PASSED" in capsys.readouterr().out
+
+
+def test_print_gate_verdict_fail(capsys):
+    _print_gate_verdict(False, ["qa: 5.0 < 6.0"])
+    out = capsys.readouterr().out
+    assert "FAILED" in out
+    assert "qa" in out
 
 
 # ── run_eval dry_run ──────────────────────────────────────────────────────────

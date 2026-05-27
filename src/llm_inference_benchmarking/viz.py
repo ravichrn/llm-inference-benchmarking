@@ -29,29 +29,8 @@ _QUANT_ORDER = ["cpu-q2k", "cpu-q4km", "cpu-q5km", "cpu-q8_0", "int8", "nf4-dq",
 # ---------------------------------------------------------------------------
 
 
-def _load_results(results_dir: Path) -> list[dict]:
-    """Load all modal_quant*.json result entries into a flat list."""
-    entries: list[dict] = []
-    for fpath in sorted(results_dir.glob("modal_quant*.json")):
-        try:
-            data = json.loads(fpath.read_text())
-        except Exception as exc:
-            print(f"Skipping {fpath.name}: {exc}", file=sys.stderr)
-            continue
-        results = data.get("results", data) if isinstance(data, dict) else data
-        if isinstance(results, list):
-            entries.extend(results)
-    return entries
-
-
-# ---------------------------------------------------------------------------
-# Pareto chart
-# ---------------------------------------------------------------------------
-
-
-def _load_points(results_dir: Path) -> list[dict]:
-    """Return list of {label, cost_per_1k, accuracy, mode, gpu} dicts."""
-    points = []
+def _iter_result_files(results_dir: Path):
+    """Yield (data, gpu_cost_hr, entries) tuples for each modal_quant*.json file."""
     for fpath in sorted(results_dir.glob("modal_quant*.json")):
         try:
             data = json.loads(fpath.read_text())
@@ -62,10 +41,31 @@ def _load_points(results_dir: Path) -> list[dict]:
             gpu_cost_hr = data.get("gpu_cost_per_hr_usd", 1.10)
             entries = data.get("results", [])
         elif isinstance(data, list):
-            gpu_cost_hr = 1.10  # fallback
+            gpu_cost_hr = 1.10
             entries = data
         else:
             continue
+        yield data, gpu_cost_hr, entries
+
+
+def _load_results(results_dir: Path) -> list[dict]:
+    """Load all modal_quant*.json result entries into a flat list."""
+    out: list[dict] = []
+    for _data, _cost_hr, entries in _iter_result_files(results_dir):
+        if isinstance(entries, list):
+            out.extend(entries)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Pareto chart
+# ---------------------------------------------------------------------------
+
+
+def _load_points(results_dir: Path) -> list[dict]:
+    """Return list of {label, cost_per_1k, accuracy, mode, gpu} dicts."""
+    points = []
+    for _data, gpu_cost_hr, entries in _iter_result_files(results_dir):
         for entry in entries:
             mode = entry.get("quant_mode") or entry.get("mode", "")
             gpu = entry.get("gpu", "")

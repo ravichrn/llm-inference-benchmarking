@@ -20,6 +20,18 @@ class RoutingPolicyEngine:
         return self._resolve_backend(tier)
 
     def _auto_tier(self, req: GatewayRequest) -> str:
+        # If live metrics are provided, let the autoscaler signal bias tier selection.
+        live = (req.metadata or {}).get("live_metrics")
+        if live:
+            from llm_inference_benchmarking.autoscaler import autoscaler_signal
+
+            sig = autoscaler_signal(live)
+            if sig["scale_direction"] == "up":
+                return "premium"
+            if sig["scale_direction"] == "down":
+                return "cheap"
+            # "hold" falls through to keyword/length heuristics below
+
         role = req.role.lower()
         if role == "fast":
             return "cheap"
@@ -75,9 +87,12 @@ def _check_ollama() -> bool:
         if time.monotonic() < expires_at:
             return cached_result
         try:
-            import urllib.request
+            import http.client
 
-            urllib.request.urlopen("http://localhost:11434", timeout=1)
+            conn = http.client.HTTPConnection("localhost", 11434, timeout=1)
+            conn.request("GET", "/")
+            conn.getresponse()
+            conn.close()
             result = True
         except Exception:
             result = False

@@ -78,6 +78,54 @@ def compute_tco(
     }
 
 
+def compute_serving_cost(
+    latency_ms: float,
+    output_tps: float,
+    batch_size: int,
+    gpu_cost_per_hr: float,
+    utilization: float = 1.0,
+    alpha: float | None = None,
+    beta: float | None = None,
+) -> dict:
+    """Model the latency-cost tradeoff for a given serving configuration.
+
+    Returns:
+        cost_per_request_usd: GPU cost per request (latency-based)
+        latency_cost_score: composite score  a*norm_latency + b*norm_cost  in [0, 1]
+            Low score = underloaded (plenty of headroom).
+            High score = overloaded or cost-inefficient.
+        latency_ms, batch_size: echoed for convenience
+
+    alpha / beta weight latency vs cost. Defaults: a=0.6, b=0.4.
+    Override via AUTOSCALER_LATENCY_WEIGHT / AUTOSCALER_COST_WEIGHT env vars.
+    """
+    if alpha is None:
+        alpha = float(os.getenv("AUTOSCALER_LATENCY_WEIGHT", "0.6"))
+    if beta is None:
+        beta = float(os.getenv("AUTOSCALER_COST_WEIGHT", "0.4"))
+
+    # Cost per request = GPU cost per second * request duration in seconds
+    cost_per_request = (gpu_cost_per_hr / 3600) * (latency_ms / 1000) / max(utilization, 1e-6)
+
+    # Normalise latency: treat 5000ms as "saturated" ceiling
+    _LAT_CEILING_MS = float(os.getenv("AUTOSCALER_LAT_CEILING_MS", "5000"))
+    norm_latency = min(latency_ms / _LAT_CEILING_MS, 1.0)
+
+    # Normalise cost: treat $0.01 per request as "saturated" ceiling
+    _COST_CEILING = float(os.getenv("AUTOSCALER_COST_CEILING_USD", "0.01"))
+    norm_cost = min(cost_per_request / _COST_CEILING, 1.0)
+
+    score = round(alpha * norm_latency + beta * norm_cost, 4)
+
+    return {
+        "cost_per_request_usd": round(cost_per_request, 8),
+        "latency_cost_score": score,
+        "latency_ms": latency_ms,
+        "batch_size": batch_size,
+        "output_tps": output_tps,
+    }
+
+
 def _resolve_pricing(model: str) -> tuple[float, float]:
     custom_in = os.getenv(f"GATEWAY_PRICE_IN_{model.upper().replace('-', '_')}", "")
     custom_out = os.getenv(f"GATEWAY_PRICE_OUT_{model.upper().replace('-', '_')}", "")
