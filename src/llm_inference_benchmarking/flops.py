@@ -18,6 +18,7 @@ from __future__ import annotations
 
 GPU_PROFILES: dict[str, dict[str, float]] = {
     "A10G": {"tflops_fp16": 125.0, "tflops_bf16": 125.0, "memory_bw_gbs": 600.0},
+    "A10": {"tflops_fp16": 125.0, "tflops_bf16": 125.0, "memory_bw_gbs": 600.0},
     "A100-40GB": {"tflops_fp16": 312.0, "tflops_bf16": 312.0, "memory_bw_gbs": 1555.0},
     "A100-80GB": {"tflops_fp16": 312.0, "tflops_bf16": 312.0, "memory_bw_gbs": 2000.0},
     "H100": {"tflops_fp16": 989.0, "tflops_bf16": 989.0, "memory_bw_gbs": 3350.0},

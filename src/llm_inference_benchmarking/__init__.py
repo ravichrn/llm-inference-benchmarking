@@ -1,11 +1,19 @@
 """Cost-aware inference gateway and benchmarking (standalone package)."""
 
-from llm_inference_benchmarking.client import GatewayClient, GatewayLLM
+from __future__ import annotations
 
-_gateway = GatewayClient()
 
-llm_agent_gateway = GatewayLLM(_gateway, role="agent")
-llm_fast_gateway = GatewayLLM(_gateway, role="fast")
+def __getattr__(name: str):
+    if name in ("GatewayClient", "GatewayLLM", "llm_agent_gateway", "llm_fast_gateway"):
+        from llm_inference_benchmarking.client import GatewayClient, GatewayLLM
+
+        globals()["GatewayClient"] = GatewayClient
+        globals()["GatewayLLM"] = GatewayLLM
+        globals()["llm_agent_gateway"] = GatewayLLM(GatewayClient(), role="agent")
+        globals()["llm_fast_gateway"] = GatewayLLM(GatewayClient(), role="fast")
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "GatewayClient",

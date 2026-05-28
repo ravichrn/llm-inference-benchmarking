@@ -246,16 +246,15 @@ def test_new_modes_in_all_modes():
 
     for mode in (
         "gptq",
+        "gptq-triton",
+        "awq",
         "fp8",
         "flash-attn",
         "torch-compile",
         "tensor-parallel",
         "continuous-batching",
-        "tgi",
-        "cpu-q2k",
+        "trtllm",
         "cpu-q4km",
-        "cpu-q5km",
-        "cpu-q8_0",
     ):
         assert mode in _ALL_MODES, f"Mode {mode!r} missing from _ALL_MODES"
 
@@ -278,16 +277,15 @@ def test_mode_notes_cover_new_modes():
 
     for mode in (
         "gptq",
+        "gptq-triton",
+        "awq",
         "fp8",
         "flash-attn",
         "torch-compile",
         "tensor-parallel",
         "continuous-batching",
-        "tgi",
-        "cpu-q2k",
+        "trtllm",
         "cpu-q4km",
-        "cpu-q5km",
-        "cpu-q8_0",
     ):
         assert mode in _MODE_NOTES, f"No note for new mode {mode!r}"
         assert len(_MODE_NOTES[mode]) > 20, f"Note for {mode!r} is too short"
@@ -298,15 +296,14 @@ def test_multi_gpu_modes_and_cpu_modes_constants():
         _ALL_MODES,
         _CPU_MODES,
         _MULTI_GPU_MODES,
-        _TGI_MODES,
+        _TRTLLM_MODES,
     )
 
     assert "tensor-parallel" in _MULTI_GPU_MODES
-    assert "tgi" in _TGI_MODES
-    for m in ("cpu-q2k", "cpu-q4km", "cpu-q5km", "cpu-q8_0"):
-        assert m in _CPU_MODES
+    assert "trtllm" in _TRTLLM_MODES
+    assert "cpu-q4km" in _CPU_MODES
     # All special modes must still appear in _ALL_MODES
-    for m in _MULTI_GPU_MODES | _CPU_MODES | _TGI_MODES:
+    for m in _MULTI_GPU_MODES | _CPU_MODES | _TRTLLM_MODES:
         assert m in _ALL_MODES
 
 

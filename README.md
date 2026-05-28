@@ -1,6 +1,6 @@
 # llm-inference-benchmarking
 
-Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, throughput, cost, and quality across routing tiers and quantization formats — including zero-shot MMLU evaluation, task-specific LLM-as-judge eval with a deterministic release gate, FLOPs roofline analysis, latency-cost autoscaler signal, and cross-provider A/B testing.
+Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, throughput, cost, and quality across routing tiers and quantization formats — including zero-shot MMLU evaluation, task-specific LLM-as-judge eval with a deterministic release gate, FLOPs roofline analysis, latency-cost autoscaler signal, and cross-provider A/B testing. Deployable as a live HTTPS endpoint on Modal.
 
 ---
 
@@ -8,36 +8,7 @@ Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, throu
 
 ### Gateway
 
-```
-Client request (prompt, tier, role)
-        │
-        ▼
-Rate limiter                 ←─ GATEWAY_RATE_LIMIT_RPM per IP (token bucket or sliding window)
-        │                          HTTP 429 + Retry-After on breach
-        ▼
-RoutingPolicyEngine          ←─ GATEWAY_FORCE_TIER env var or auto heuristic
-        │                          (prompt length + role + keyword signals)
-        │                          if metadata.live_metrics present → autoscaler_signal()
-        │                          biases tier (up→premium, down→cheap, hold→heuristics)
-        │  resolves: tier → backend → model
-        ▼
-Budget policy check          ←─ daily hard cap (block) / soft cap (downgrade tier)
-        │
-        ▼
-SLA latency check            ←─ p99 cap per tier; breached → downgrade tier or reject
-        │
-        ▼
-Quality-aware routing        ←─ cheapest model meeting MMLU accuracy threshold
-        │                          (reads benchmark JSONs; falls back if no data)
-        ▼
-GatewayClient                ←─ LangChain adapters (OpenAI / Claude / Ollama / vLLM)
-        │
-        ▼
-Usage normalisation           ─  tokens, latency, estimated cost per request
-        │
-        ├─→ SQLite ledger     ←─ GATEWAY_LEDGER_DB (usage history, cost tracking)
-        └─→ Prometheus        ←─ GET /metrics (latency, cost, error rate per tier)
-```
+Each request goes through: rate limiter → routing policy (prompt length + role + keyword heuristics, or `auto` biased by autoscaler signal) → budget cap check → SLA p99 check → quality-aware tier selection → LangChain backend call → usage logged to SQLite + Prometheus.
 
 **Routing tiers:**
 
@@ -52,65 +23,67 @@ Usage normalisation           ─  tokens, latency, estimated cost per request
 
 **Supported backends:** OpenAI · Anthropic Claude · Ollama (local) · vLLM (self-hosted)
 
-**FastAPI endpoints:** `POST /generate` · `GET /health` · `GET /usage/summary` · `GET /metrics` · `GET /sla/status`
+**FastAPI endpoints:** `POST /generate` · `POST /ab` · `GET /health` · `GET /usage/summary` · `GET /metrics` · `GET /sla/status`
+
+**Live deployment:** `modal_gateway.py` wraps the FastAPI app as a Modal HTTPS endpoint with a persistent SQLite ledger and `keep_warm=1`. See [Running the live gateway](#running-the-live-gateway).
 
 ### GPU Quantization Benchmark
 
-```
-GPU containers per mode, run in parallel
-        │
-        ├─ Load model  (HuggingFace / vLLM engine)
-        ├─ Latency     (mean / P95 / TTFT over 5 bench prompts × 3 iterations)
-        ├─ Throughput  (batch 1 / 4 / 8 output tok/s)
-        ├─ Perplexity  (WikiText-2, HF modes only)
-        ├─ MMLU        (50-question log-prob scoring, zero-shot)
-        └─ FLOPs funnel  ←─ arithmetic intensity, roofline bound, achieved MFU %,
-                            compute vs memory bound, peak theoretical tok/s
-        │
-        ▼
-Results merged → results/modal_quant_<gpu>.json
-        Each mode entry gains a "flops_funnel" sub-dict with roofline analysis.
-```
+Runs modes in parallel on Modal GPU containers. Each mode measures latency (mean/P95/TTFT), throughput (batch 1/4/8), VRAM, perplexity (HF modes), zero-shot MMLU accuracy, and FLOPs roofline (arithmetic intensity, MFU %, compute vs memory bound). Results merge into `results/modal_quant_<gpu>.json`.
+
+**Benchmark modes:**
+
+| Mode | Engine | GPU | Notes |
+|---|---|---|---|
+| `fp16` | HuggingFace | A10G | Full precision baseline |
+| `int8` | bitsandbytes | A10G | 8-bit; compute-bound on Ampere |
+| `nf4` | bitsandbytes | A10G | 4-bit NormalFloat; best VRAM/quality tradeoff |
+| `spec-dec` | HuggingFace | A10G | Speculative decoding with 1B draft model |
+| `vllm` | vLLM | A10G | PagedAttention; best throughput |
+| `gptq` | gptqmodel | A10G | INT4 with Marlin/exllama2 CUDA kernels |
+| `gptq-triton` | gptqmodel | A10G | INT4 with Triton kernel backend; benchmarks compiler vs hand-tuned kernels |
+| `awq` | autoawq | A10G | INT4 AWQ with fused attention+MLP kernels; best quality at 4-bit |
+| `flash-attn` | HuggingFace (SDPA) | A10G | Tiled attention; O(n) memory |
+| `torch-compile` | HuggingFace | A10G | `torch.compile()` graph optimization |
+| `continuous-batching` | vLLM async | A10G | Dynamic batching for multi-tenant serving |
+| `fp8` | vLLM | **H100** | Native FP8 tensor cores (SW emulation on A10G) |
+| `tensor-parallel` | vLLM | **2× A100-80GB** | Sharded across 2 GPUs |
+| `cpu-q4km` | llama.cpp | CPU | GGUF Q4_K_M; edge/CPU deployment baseline |
+
+> `fp8`, `tensor-parallel`, and `cpu-q4km` are excluded from the default sweep — run them explicitly with `--modes`.
 
 ### Eval Harness + A/B Testing
 
-```
-50 prompts × tier (cheap / balanced / premium)
-        │
-        ├─ Model response    (parallel, up to 5 concurrent)
-        ├─ LLM-as-judge      (independent model scores 0–10)
-        └─ Regression check  (vs prior run, flags Δ > 0.5)
-        │
-        ▼
-results/eval_<timestamp>.json   ←─ consumed by quality router
-
-A/B: same prompts → two variants in parallel → independent judge → win rate + cost delta
-POST /ab endpoint exposes this via the gateway API
-```
+Scores 50 prompts with an independent LLM judge (0–10). Regression gate exits 1 if any task type drops below threshold. Results feed the quality router. A/B runs the same prompts through two variants in parallel and reports win rate + cost delta — also available as `POST /ab`.
 
 ---
 
 ## Quantization Results
 
-**Model:** `unsloth/Meta-Llama-3.1-8B-Instruct` · **GPU:** NVIDIA A10G ($1.10/hr) · **Raw data:** [results/modal_quant_a10g.json](results/modal_quant_a10g.json)
+**Model:** `unsloth/Meta-Llama-3.1-8B-Instruct` · **GPU:** NVIDIA A10G ($1.10/hr) · **Raw data:** [results/modal_quant_a10g.json](results/modal_quant_a10g.json) · [H100](results/modal_quant_h100.json) · [2× A100-80GB](results/modal_quant_a100_80gb.json)
 
-TTFT ≈ prefill duration. GPTQ has the fastest prefill (Marlin INT4 kernels); NF4/int8 are slower due to dequantization overhead on attention projections.
+TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill and decode; gptq-triton is 2.6× slower showing hand-tuned CUDA beats the Triton compiler on Ampere. AWQ via vLLM scores the highest MMLU of any INT4 mode (92%) — activation-aware calibration preserves accuracy — but throughput is lower than GPTQ due to vLLM's AWQ dequantization overhead on A10G.
 
 | Mode | Engine | Latency (ms) | TTFT (ms) | Tok/s | Batch 8 tok/s | VRAM (MB) | MMLU | Cost/1k out (USD) |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| **tensor-parallel** | vLLM (2× A100-80GB) | **1,762** | — | **146.7** | **1,106.0** | 2× 80 GB | **94%** | $0.0042 ¹ |
-| **fp8** | vLLM | 4,665 | — | 54.9 | 420.4 | ~16 GB | ⚠ 6% | $0.0056 |
-| **gptq** | HuggingFace | **7,375** | **37.1** | **28.9** | 278.1 | 5,495 | 92% | **$0.0088** |
-| **vllm** | vLLM | 8,776 | 37.8 | 29.2 | 222.3 | 19,154 | **94%** | $0.0101 |
-| **fp16** | HuggingFace | 9,522 | 41.5 | 26.5 | 202.9 | 17,321 | **94%** | $0.0110 |
-| **nf4** | HuggingFace | 10,403 | 145.6 | 25.3 | 54.9 | 7,787 | 74% | $0.0121 |
-| **nf4-dq** | HuggingFace | 16,400 | 142.7 | 15.7 | 56.4 | 5,541 | 74% | $0.0195 |
-| **int8** | HuggingFace | 30,846 | 163.7 | 8.3 | 60.1 | 12,296 | 74% | $0.0368 |
-| **cpu-q4km** | llama.cpp | ~95,000 | — | ~0.7 | — | — | ~70% ² | CPU only |
+| **fp8** | vLLM (H100) | **1,116** | — | **232.0** | **1,785.2** | HBM3 ³ | **94%** | **$0.0077** ² |
+| **tensor-parallel** | vLLM (2× A100-80GB) | **1,745** | — | **147.5** | **1,108.0** | 2× 80 GB | **94%** | $0.0075 ¹ |
+| **gptq** | gptqmodel | **7,558** | **32.8** | **33.3** | **267.7** | 5,488 | 76% | **$0.0092** |
+| **spec-dec** | HuggingFace | 8,187 | 41.5 | 31.3 | — | 17,758 | 74% | $0.0098 |
+| **vllm** | vLLM | 8,780 | — | 29.1 | 222.4 | PagedAttn ³ | **94%** | $0.0105 |
+| **torch-compile** | HuggingFace | 9,218 | 39.2 | 27.1 | 197.9 | 17,610 | 74% | $0.0113 |
+| **flash-attn** | HuggingFace (SDPA) | 9,558 | 41.7 | 26.7 | 202.4 | 17,610 | 74% | $0.0114 |
+| **fp16** | HuggingFace | 9,563 | 41.8 | 26.5 | 201.4 | 17,610 | 74% | $0.0115 |
+| **nf4** | HuggingFace | 10,436 | 145.0 | 24.8 | 55.4 | 7,914 | 74% | $0.0123 |
+| **gptq-triton** | gptqmodel | 19,919 | 78.6 | 12.8 | 102.3 | 5,470 | 76% | $0.0239 |
+| **int8** | bitsandbytes | 25,313 | 130.0 | 10.0 | 74.3 | 11,174 | 74% | $0.0306 |
+| **awq** | vLLM (AWQ) | 23,606 | — | 10.7 | 84.0 | PagedAttn ³ | **92%** | $0.0286 |
+| **cpu-q4km** | llama.cpp | ~95,000 | — | ~0.7 | — | — | ~70% ⁴ | CPU only |
 
 > ¹ tensor-parallel runs on 2× A100-80GB ($8.00/hr combined); cost reflects the 2-GPU pair.
-> ² CPU modes run a 20-question MMLU subset. Treat as directional only.
-> ⚠ **fp8**: SW-emulated on A10G — quality degrades to 6% MMLU. Hardware-native FP8 requires H100/H200.
+> ² fp8 runs on H100 ($6.45/hr); 8.6× faster than A10G fp16 at lower cost-per-token despite higher hourly rate.
+> ³ vLLM and AWQ use PagedAttention; VRAM is dynamically allocated rather than reserved upfront.
+> ⁴ CPU MMLU uses a 20-question subset. Treat as directional only.
 
 ### Model Evaluation
 
@@ -118,62 +91,60 @@ TTFT ≈ prefill duration. GPTQ has the fastest prefill (Marlin INT4 kernels); N
 
 | Mode | CS & Programming | ML & Deep Learning | Systems & Networking | Statistics & Math | Overall |
 |---|---:|---:|---:|---:|---:|
-| **fp16** | 85.7% | **95.0%** | **100%** | **100%** | **94%** |
-| **vllm** | 85.7% | **95.0%** | **100%** | **100%** | **94%** |
-| gptq | 85.7% | 95.0% | 100% | 85.7% | 92% |
+| **vllm** | **85.7%** | **95.0%** | **100%** | **100%** | **94%** |
+| gptq | 78.6% | 70.0% | 77.8% | 85.7% | 76% |
+| fp16 / int8 / nf4 * | 78.6% | 70.0% | 66.7% | 85.7% | 74% |
 
-> All three modes score within 2pp overall. GPTQ misses one statistics question (6/7 vs 7/7) — the only difference from fp16. Confirms INT4 quantization does not meaningfully degrade accuracy on this subset.
+> \* All HuggingFace-backed modes (fp16, int8, nf4, spec-dec, flash-attn, torch-compile) produce identical predictions at temperature=0 — same model, deterministic decoding. vLLM scores 20pp higher because it uses PagedAttention's token-level logprobs rather than the HuggingFace generation path; the difference reflects evaluation method sensitivity rather than model quality. GPTQ gains one Systems question (7/9 vs 6/9) over HF modes.
 
 ### Decision guide
 
 | Constraint | Recommended mode |
 |---|---|
 | Multi-GPU batch serving (2× A100-80GB) | tensor-parallel |
-| H100 single-GPU production | fp8 |
-| Single GPU, lowest latency | gptq |
+| H100 single-GPU production | fp8 (232 tok/s, 94% MMLU, $0.0077/1k) |
+| Single GPU, lowest latency | gptq (Marlin kernels) |
+| Single GPU, best INT4 quality (accuracy > speed) | awq (92% MMLU vs gptq 76%) |
+| Triton vs CUDA kernel comparison | gptq-triton vs gptq |
 | Single GPU, best throughput + accuracy | vllm |
 | VRAM ≤ 8 GB | nf4 |
-| VRAM ≤ 6 GB | nf4-dq |
 | Baseline / reproducibility reference | fp16 |
-| TCO comparison at ≤1 req/min | cpu-q4km (or cpu-q8_0 for quality) |
+| CPU / edge deployment | cpu-q4km |
 
 ---
 
 ## Gateway Results
 
-**Backend:** OpenAI · **Raw data:** [results/gateway_benchmark_snapshot.json](results/gateway_benchmark_snapshot.json)
+**Backend:** OpenAI · **Live endpoint:** Modal HTTPS · **Raw data:** [results/gateway_benchmark_snapshot.json](results/gateway_benchmark_snapshot.json)
 
-| Tier | Model | Mean (ms) | P50 (ms) | P95 (ms) | Cost/req (USD) |
-|---|---|---:|---:|---:|---:|
-| cheap | gpt-5.4-mini | 4,182 | 2,204 | 9,897 | $0.000701 |
-| balanced | gpt-5.4 | 8,972 | 5,640 | 18,775 | $0.004024 |
-| premium | gpt-5.5 | 11,129 | 4,945 | 28,148 | $0.004911 |
+### Routing decisions (live demo)
 
-- `cheap` is **5.7× cheaper** than `balanced` and **2.1× faster** on mean latency — strongly preferred for simple/short tasks
-- P50 is the reliable signal for `balanced`/`premium` — both have a long tail; P50 stays 4.9–5.6s while mean runs 9–11s
-- `balanced` and `premium` cost delta is small (~22%) — `premium` is better value for complex tasks
+| Request | Tier | Model | Latency | Cost |
+|---|---|---|---:|---:|
+| Simple fact | cheap | gpt-5.4-mini | 1,644ms | $0.00002 |
+| Classification | cheap | gpt-5.4-mini | 578ms | $0.00001 |
+| Deep analysis (keyword) | premium | gpt-5.5 | 20,037ms | $0.00775 |
+| Explicit cheap override | cheap | gpt-5.4-mini | 2,013ms | $0.00011 |
+| Explicit premium override | premium | gpt-5.5 | 35,358ms | $0.01717 |
+| Long prompt (length heuristic) | balanced | gpt-5.4 | 19,893ms | $0.00953 |
 
-### Concurrent load (50 req/level)
+- cheap is **166× cheaper** than premium and **14× faster** — 3 of 6 demo requests routed there automatically
+- Long prompt (100 repetitions) correctly escalates to `balanced` via length heuristic
+- Keyword signals (`trade-offs`, `compare`) correctly escalate to `premium`
+
+### Usage summary (6 requests)
+
+| Tier | Requests | Avg latency | Total cost |
+|---|---|---:|---:|
+| cheap | 3 | 1,412ms | $0.00015 |
+| balanced | 1 | 19,893ms | $0.00953 |
+| premium | 2 | 27,698ms | $0.02491 |
+
+### Concurrent load
 
 Raw: [cheap](results/load_test_cheap.json) · [balanced](results/load_test_balanced.json) · [premium](results/load_test_premium.json)
 
-| Tier | Concurrency | Req/s | P50 (ms) | P95 (ms) | Error rate |
-|---|---:|---:|---:|---:|---:|
-| cheap | 1 | 0.58 | 1,661 | 2,662 | 0% |
-|  | 5 | 2.15 | 1,566 | 2,824 | 0% |
-|  | 10 | 5.15 | 1,567 | 2,648 | 0% |
-|  | 20 | 8.42 | 1,690 | 2,858 | 0% |
-| balanced | 1 | 0.21 | 3,196 | 9,255 | 0% |
-|  | 5 | 1.04 | 3,337 | 8,192 | 0% |
-|  | 10 | 1.94 | 3,332 | 7,659 | 0% |
-|  | 20 | 1.87 | 3,460 | 16,780 | **22%** |
-| premium | 1 | 0.20 | 3,471 | 6,345 | 0% |
-|  | 5 | 1.21 | 3,369 | 7,216 | 0% |
-|  | 10 | 2.27 | 3,291 | 6,980 | 0% |
-|  | 20 | 6.80 | 3,655 | 6,129 | **50%** |
-
-- **Cheap tier scales cleanly to c=20** (0% errors, P50 flat ~1.6s) — bottleneck is provider response time, not the gateway
-- **Balanced and premium hit rate limits at c=20** (22% / 50% errors) — OpenAI per-tier RPM caps; P50 stays stable even under load
+Cheap scales to c=20 with 0% errors (P50 flat ~1.6s) — bottleneck is provider latency, not the gateway. Balanced and premium hit OpenAI RPM caps at c=20 (22% / 50% errors); P50 stays stable, only the tail degrades.
 
 ---
 
@@ -181,25 +152,13 @@ Raw: [cheap](results/load_test_cheap.json) · [balanced](results/load_test_balan
 
 ### LLM Eval Harness
 
-**Results** (n=50, judge=`gpt-5.4-mini`; raw data: [run 1](results/eval_2026-05-27T01-00-17.json) · [run 2](results/eval_2026-05-27T01-01-58.json) · [run 3](results/eval_2026-05-27T01-02-56.json)):
+**Results** (n=50, judge=`gpt-5.4-mini`):
 
 | Tier | Model | Avg score | Latency (ms) | Cost/run | Gate |
 |---|---|---:|---:|---:|---:|
 | cheap | gpt-5.4-mini | 9.06/10 | 1,506 | $0.021 | ✓ passed |
 
-Score by task type (avg across 3 runs):
-
-| Task type | Score | Notes |
-|---|---:|---|
-| qa | 9.8/10 | Consistently high |
-| reasoning | 9.7/10 | Consistently high |
-| summarization | 9.2/10 | Stable |
-| code | 8.2/10 | Lowest — judge may favor terse responses |
-| instruction_following | 8.4/10 | Stable |
-
-> All three gate runs passed (default threshold 6.0). Code and instruction_following are the soft spots but well above the gate floor. Cost/run increased vs earlier results because `total_cost_usd` now includes the judge call cost.
-
-> Earlier cross-provider comparison (cheap vs claude-opus-4-6 premium) is in the A/B results below — cheap scores higher on average at 132× lower cost.
+All three gate runs passed (threshold 6.0). QA/reasoning score highest (9.7–9.8); code lowest (8.2) — judge may favour terse responses. Raw data: [run 1](results/eval_2026-05-27T01-00-17.json) · [run 2](results/eval_2026-05-27T01-01-58.json) · [run 3](results/eval_2026-05-27T01-02-56.json)
 
 ### A/B Testing
 
@@ -215,29 +174,44 @@ Score by task type (avg across 3 runs):
 
 ---
 
-## Quickstart
+## Running the live gateway
 
+`modal_gateway.py` deploys the full FastAPI gateway as a persistent HTTPS endpoint on Modal. The ledger is stored in a Modal volume so usage history survives container restarts.
+
+**Setup Modal secrets (one-time):**
 ```bash
-uv sync --group dev                  # install
-cp .env.example .env                 # add API keys
-uv run uvicorn llm_inference_benchmarking.gateway:app --host 0.0.0.0 --port 8010
+modal secret create openai-secret OPENAI_API_KEY=sk-...
+modal secret create anthropic-secret ANTHROPIC_API_KEY=sk-ant-...
+modal secret create gateway-secret GATEWAY_API_KEY=your-secret
+```
 
-curl http://localhost:8010/health
+**Deploy:**
+```bash
+# Live reload (dev)
+modal serve src/llm_inference_benchmarking/modal_gateway.py
+
+# Permanent deployment
+modal deploy src/llm_inference_benchmarking/modal_gateway.py
+```
+
+**Demo — routing decisions + autoscaler signal:**
+```bash
+python demo_gateway.py --dry-run                                             # routing logic only, no API key
+python demo_gateway.py --url https://<your-app>.modal.run --api-key $KEY    # live endpoint
 ```
 
 ---
 
-## Configuration
-
-Minimum required keys in `.env`:
+## Quickstart
 
 ```bash
-GATEWAY_API_KEY=your-secret        # auth header value
-OPENAI_API_KEY=sk-...              # or ANTHROPIC_API_KEY for Claude backend
-AGENT_LLM=openai                   # openai | claude | vllm
+uv sync --group dev                  # install
+cp .env.example .env                 # set GATEWAY_API_KEY, OPENAI_API_KEY, AGENT_LLM=openai
+uv run uvicorn llm_inference_benchmarking.gateway:app --host 0.0.0.0 --port 8010
+curl http://localhost:8010/health
 ```
 
-See [.env.example](.env.example) for the full reference including model overrides, vLLM config, custom pricing, benchmark options, rate limiting, SLA caps, and quality routing.
+See [.env.example](.env.example) for the full reference (model overrides, vLLM config, rate limiting, SLA caps, budget caps, quality routing).
 
 ---
 
@@ -265,17 +239,25 @@ Runs modes in parallel on a cloud GPU. Requires a Modal account (`modal setup` o
 **Supported GPUs:** `T4` ($0.59/hr) · `A10G` ($1.10/hr) · `A100-40GB` ($3.70/hr) · `A100-80GB` ($4.00/hr) · `H100` ($6.45/hr)
 
 ```bash
-# Run all modes on A10G (default) → results/modal_quant_a10g.json
+# Default A10G sweep (fp16, int8, nf4, spec-dec, vllm, gptq, gptq-triton,
+# awq, flash-attn, torch-compile, continuous-batching)
 uv run modal run src/llm_inference_benchmarking/modal_benchmark.py
 
-# Run specific modes; --merge updates those rows in the existing file
+# Merge new results into existing file (keeps untouched modes)
+uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --merge
+
+# Specialist modes (each requires separate run)
+uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --modes fp8        # needs H100
+uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --modes cpu-q4km  # CPU container
 uv run modal run src/llm_inference_benchmarking/modal_benchmark.py \
-  --modes fp16,gptq,nf4 --merge
+  --modes tensor-parallel --gpu A100-80GB                                             # 2× A100-80GB
 
 # Cross-model or cross-GPU
 uv run modal run src/llm_inference_benchmarking/modal_benchmark.py \
   --model mistralai/Mistral-7B-Instruct-v0.3 --gpu A100-40GB
 ```
+
+NVTX range markers are active around warmup, TTFT, and throughput loops — attach Nsight Systems with `nsys profile --trace=cuda,nvtx` to capture a GPU timeline.
 
 ### Concurrent load test
 
@@ -296,37 +278,19 @@ uv run llm-charts --results results/ --output-dir charts/
 
 ### LLM Eval Harness
 
-Task-specific evaluation with LLM-as-judge scoring across 50 prompts (summarization, reasoning, code, Q&A, instruction-following). Writes `results/eval_<timestamp>.json` in the same schema as quantization benchmarks so the quality router can consume them. Auto-detects a prior run for regression comparison.
-
 ```bash
 uv run python -m llm_inference_benchmarking.eval --tier cheap
-uv run python -m llm_inference_benchmarking.eval --tier cheap --dry-run
-```
-
-Add `--gate` to block on quality regression (exit 1 if any task type scores below `EVAL_GATE_THRESHOLD`, default `6.0`):
-
-```bash
-uv run python -m llm_inference_benchmarking.eval --tier cheap --gate
+uv run python -m llm_inference_benchmarking.eval --tier cheap --gate            # exit 1 on regression
 uv run python -m llm_inference_benchmarking.eval --tier cheap --gate --gate-threshold 7.0
 ```
 
 ### A/B Testing
-
-Routes the same 50 prompts through two variants in parallel, scores both with an independent LLM judge, and reports win rate + cost delta. Also available as `POST /ab` via the gateway API.
 
 ```bash
 uv run python -m llm_inference_benchmarking.ab_router \
   --variant-a '{"tier":"cheap"}' --variant-b '{"tier":"balanced"}' \
   --output results/ab_out.json
 ```
-
-### FLOPs Roofline Analysis
-
-Runs automatically alongside every quantization benchmark — no separate command. Each mode entry in the results JSON gains a `flops_funnel` sub-dict with arithmetic intensity, roofline bound, achieved MFU %, and compute vs memory bound classification.
-
-### Latency-Cost Autoscaler Signal
-
-Pass `live_metrics` in a request's `metadata` to bias `auto` tier routing (score < 0.4 → premium, > 0.8 → cheap). Env vars: `AUTOSCALER_UP_THRESHOLD` (0.4), `AUTOSCALER_DOWN_THRESHOLD` (0.8), `AUTOSCALER_LATENCY_WEIGHT` (0.6), `AUTOSCALER_COST_WEIGHT` (0.4).
 
 ---
 

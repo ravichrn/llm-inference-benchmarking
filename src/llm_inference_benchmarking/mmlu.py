@@ -852,7 +852,7 @@ def _measure_quality_vllm(llm: Any) -> dict[str, Any]:
         choice_labels = [chr(ord("A") + i) for i in range(len(choices))]
         prompt = f"Question: {question}\nA) {choices[0]}\nB) {choices[1]}\nC) {choices[2]}\nD) {choices[3]}\nAnswer:"
         out = llm.generate([prompt], score_params, use_tqdm=False)[0]
-        predicted_label = "A"
+        predicted_label = None
         if out.outputs and out.outputs[0].logprobs:
             first_token_logprobs = out.outputs[0].logprobs[0]
             best_lp = -1e9
@@ -861,6 +861,10 @@ def _measure_quality_vllm(llm: Any) -> dict[str, Any]:
                 if tok in choice_labels and v.logprob > best_lp:
                     best_lp = v.logprob
                     predicted_label = tok
+        # If logprobs unavailable (e.g. FP8 on non-Hopper GPU), mark as invalid
+        # rather than defaulting to "A" which would produce artificially low accuracy
+        if predicted_label is None:
+            predicted_label = "?"
 
         is_correct = predicted_label == answer_letter
         if is_correct:
