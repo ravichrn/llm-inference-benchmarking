@@ -54,10 +54,10 @@ for mode in "${MODE_LIST[@]}"; do
 
   REP="${PROFILE_DIR}/${mode}.nsys-rep"
 
-  "$NSYS" stats --report gpukernsum --format csv "$REP" \
+  "$NSYS" stats --report gpukernsum --format csv --force-export=true "$REP" \
     > "${PROFILE_DIR}/${mode}_kernsum.csv" 2>/dev/null || true
 
-  "$NSYS" stats --report gpumemtimesum --format csv "$REP" \
+  "$NSYS" stats --report gpumemtimesum --format csv --force-export=true "$REP" \
     > "${PROFILE_DIR}/${mode}_memsum.csv" 2>/dev/null || true
 
   python profiling/parse_nsys.py \
