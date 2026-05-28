@@ -1,117 +1,58 @@
-"""Parse Nsight Systems sqlite output into a kernel breakdown JSON.
+"""Parse nsys stats CSV output into a kernel breakdown JSON.
 
-Reads the .sqlite file that nsys produces directly via Python's stdlib sqlite3 —
-no nsys binary required for parsing.
+run_profile.sh calls `nsys stats` to produce CSV files, then calls this script
+to aggregate and format them. No subprocess or sqlite dependency here.
 
-Usage:
-    python profiling/parse_nsys.py profiling/profiles/fp16.sqlite --mode fp16
-    python profiling/parse_nsys.py profiling/profiles/fp16.sqlite --mode fp16 --output results/profile_kernels_fp16.json
-
-Generate the sqlite file with:
-    nsys profile --output profiling/profiles/fp16 --export sqlite --trace cuda,nvtx \\
-        python profiling/profile_benchmark.py --mode fp16
+Usage (called by run_profile.sh):
+    python profiling/parse_nsys.py \\
+        --kernsum profiling/profiles/fp16_kernsum.csv \\
+        --memsum  profiling/profiles/fp16_memsum.csv \\
+        --mode fp16 \\
+        --output results/profile_kernels_fp16.json
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
-import sqlite3
-import sys
+from io import StringIO
 from pathlib import Path
 
 
-def _open_readonly(sqlite_path: str) -> sqlite3.Connection:
-    path = Path(sqlite_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"File not found: {sqlite_path!r}")
-    if path.suffix.lower() != ".sqlite":
-        raise ValueError(f"Expected a .sqlite file, got: {sqlite_path!r}")
-    return sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
-
-
-def _table_names(con: sqlite3.Connection) -> frozenset[str]:
-    rows = con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-    return frozenset(r[0] for r in rows)
-
-
-def _read_kernels(sqlite_path: str) -> list[dict]:
-    """Return per-kernel aggregate rows sorted by total GPU time descending."""
-    con = _open_readonly(sqlite_path)
-    try:
-        tables = _table_names(con)
-        if "CUPTI_ACTIVITY_KIND_KERNEL" not in tables:
-            print("Warning: CUPTI_ACTIVITY_KIND_KERNEL table not found; no kernel data.", file=sys.stderr)
-            return []
-
-        if "StringIds" in tables:
-            sql = """
-                SELECT COALESCE(s.value, CAST(k.shortName AS TEXT)) AS name,
-                       COUNT(*)                                       AS cnt,
-                       SUM(k.end - k.start)                          AS total_ns
-                FROM   CUPTI_ACTIVITY_KIND_KERNEL k
-                LEFT JOIN StringIds s ON k.shortName = s.id
-                GROUP  BY k.shortName
-                ORDER  BY total_ns DESC
-            """
-        else:
-            sql = """
-                SELECT CAST(shortName AS TEXT) AS name,
-                       COUNT(*)                AS cnt,
-                       SUM(end - start)        AS total_ns
-                FROM   CUPTI_ACTIVITY_KIND_KERNEL
-                GROUP  BY shortName
-                ORDER  BY total_ns DESC
-            """
-
-        rows = []
-        for name, cnt, total_ns in con.execute(sql):
-            rows.append(
-                {
-                    "name": str(name or "unknown"),
-                    "count": int(cnt or 1),
-                    "total_ns": float(total_ns or 0.0),
-                }
-            )
-        return rows
-
-    except sqlite3.OperationalError as exc:
-        print(f"Warning: kernel query failed: {exc}", file=sys.stderr)
+def _read_csv(path: str) -> list[dict]:
+    text = Path(path).read_text()
+    lines = text.splitlines()
+    # Skip preamble lines (Generating..., blanks) until we reach the CSV header
+    csv_start = next(
+        (i for i, line in enumerate(lines) if "," in line and not line.startswith("Generating")),
+        None,
+    )
+    if csv_start is None:
         return []
-    finally:
-        con.close()
+    reader = csv.DictReader(StringIO("\n".join(lines[csv_start:])))
+    return list(reader)
 
 
-def _read_memcpy_ns(sqlite_path: str) -> float:
-    """Return total memory-copy time in nanoseconds."""
-    con = _open_readonly(sqlite_path)
-    try:
-        if "CUPTI_ACTIVITY_KIND_MEMCPY" not in _table_names(con):
-            return 0.0
-        result = con.execute("SELECT SUM(end - start) FROM CUPTI_ACTIVITY_KIND_MEMCPY").fetchone()
-        return float(result[0] or 0.0)
-    except sqlite3.OperationalError:
-        return 0.0
-    finally:
-        con.close()
+def _get(row: dict, *keys: str, default: float = 0.0) -> float:
+    for k in keys:
+        if k in row:
+            try:
+                return float(row[k])
+            except (ValueError, TypeError):
+                pass
+    return default
 
 
-def _get(row: dict, key: str, default: float = 0.0) -> float:
-    try:
-        return float(row.get(key, default))
-    except (ValueError, TypeError):
-        return default
-
-
-def parse(sqlite_path: str, mode: str) -> dict:
-    kern_rows = _read_kernels(sqlite_path)
-    total_gpu_ns = sum(r["total_ns"] for r in kern_rows)
+def parse(kernsum_csv: str, memsum_csv: str, mode: str) -> dict:
+    kern_rows = _read_csv(kernsum_csv) if Path(kernsum_csv).is_file() else []
+    total_gpu_ns = sum(_get(r, "Total Time (ns)", "Total(ns)") for r in kern_rows)
 
     top_kernels = []
     for row in kern_rows[:20]:
-        duration_ns = row["total_ns"]
-        count = row["count"]
-        name = row["name"]
+        duration_ns = _get(row, "Total Time (ns)", "Total(ns)")
+        count = int(_get(row, "Count", "Instances", default=1))
+        name = row.get("Name", row.get("Kernel Name", "unknown"))
         pct = round(duration_ns / total_gpu_ns * 100, 2) if total_gpu_ns else 0.0
         top_kernels.append(
             {
@@ -123,7 +64,8 @@ def parse(sqlite_path: str, mode: str) -> dict:
             }
         )
 
-    total_memcpy_ms = _read_memcpy_ns(sqlite_path) / 1e6
+    mem_rows = _read_csv(memsum_csv) if Path(memsum_csv).is_file() else []
+    total_memcpy_ms = sum(_get(r, "Total Time (ns)", "Total(ns)") for r in mem_rows) / 1e6
 
     categories: dict[str, float] = {
         "attention": 0.0,
@@ -159,12 +101,13 @@ def parse(sqlite_path: str, mode: str) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("sqlite", help=".sqlite file from nsys profile --export sqlite")
+    parser.add_argument("--kernsum", required=True, help="CSV from: nsys stats --report gpukernsum")
+    parser.add_argument("--memsum", required=True, help="CSV from: nsys stats --report gpumemtimesum")
     parser.add_argument("--mode", required=True)
     parser.add_argument("--output", default="")
     args = parser.parse_args()
 
-    result = parse(args.sqlite, args.mode)
+    result = parse(args.kernsum, args.memsum, args.mode)
 
     print(f"\n=== {args.mode} kernel breakdown ===")
     print(f"Total GPU time: {result['total_gpu_time_ms']:.1f}ms  Memcpy: {result['total_memcpy_ms']:.1f}ms")

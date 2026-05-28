@@ -5,16 +5,11 @@
 #   bash profiling/run_profile.sh                        # all default modes
 #   bash profiling/run_profile.sh fp16,vllm,gptq         # specific modes
 #
-# Lambda setup (one-time, run before this script):
-#   pip install torch==2.5.1 transformers accelerate bitsandbytes gptqmodel nvtx
-#   pip install vllm>=0.6.0
-#   pip install "sglang[all]>=0.4.0,<0.5.0" --extra-index-url https://flashinfer.ai/whl/cu124/torch2.5/
-#
 # Output:
-#   profiling/profiles/<mode>.sqlite       raw Nsight trace
-#   results/profile_bench_<mode>.json      latency/throughput numbers
-#   results/profile_kernels_<mode>.json    kernel breakdown from nsys stats
-#   results/profiling_summary.json         all modes merged
+#   profiling/profiles/<mode>.nsys-rep         raw Nsight Systems trace
+#   results/profile_bench_<mode>.json          latency/throughput numbers
+#   results/profile_kernels_<mode>.json        kernel breakdown
+#   results/profiling_summary.json             all modes merged
 
 set -euo pipefail
 
@@ -25,11 +20,8 @@ RESULTS_DIR="results"
 
 mkdir -p "$PROFILE_DIR" "$RESULTS_DIR"
 
-# Verify nsys is available
 if ! command -v nsys &>/dev/null; then
-  echo "nsys not found. Add it to PATH:"
-  echo "  export PATH=\$PATH:/usr/local/cuda/bin"
-  echo "  # or: find /opt/nvidia -name nsys 2>/dev/null | head -1"
+  echo "nsys not found. Install with: sudo apt-get install -y nsight-systems"
   exit 1
 fi
 
@@ -41,7 +33,6 @@ for mode in "${MODE_LIST[@]}"; do
 
   nsys profile \
     --output "${PROFILE_DIR}/${mode}" \
-    --export sqlite \
     --trace cuda,nvtx \
     --force-overwrite true \
     python profiling/profile_benchmark.py \
@@ -49,8 +40,17 @@ for mode in "${MODE_LIST[@]}"; do
       --cache-dir "$CACHE_DIR" \
       --output "${RESULTS_DIR}/profile_bench_${mode}.json"
 
+  REP="${PROFILE_DIR}/${mode}.nsys-rep"
+
+  nsys stats --report gpukernsum --format csv "$REP" \
+    > "${PROFILE_DIR}/${mode}_kernsum.csv" 2>/dev/null || true
+
+  nsys stats --report gpumemtimesum --format csv "$REP" \
+    > "${PROFILE_DIR}/${mode}_memsum.csv" 2>/dev/null || true
+
   python profiling/parse_nsys.py \
-    "${PROFILE_DIR}/${mode}.sqlite" \
+    --kernsum "${PROFILE_DIR}/${mode}_kernsum.csv" \
+    --memsum  "${PROFILE_DIR}/${mode}_memsum.csv" \
     --mode "$mode" \
     --output "${RESULTS_DIR}/profile_kernels_${mode}.json"
 
@@ -85,7 +85,6 @@ for mode in sorted(set(list(kernel_by_mode) + list(bench_by_mode))):
 pathlib.Path("results/profiling_summary.json").write_text(json.dumps(summary, indent=2))
 print(f"\nSummary written to results/profiling_summary.json ({len(summary)} modes)")
 
-# Print comparison table
 print(f"\n{'Mode':<10} {'Lat(ms)':>8} {'TPS':>6} {'Attn%':>7} {'Matmul%':>8} {'Dequant%':>9} {'Top kernel'}")
 print("-" * 90)
 for e in summary:
