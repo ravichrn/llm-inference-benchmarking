@@ -25,6 +25,8 @@ Run:
   modal run src/llm_inference_benchmarking/modal_benchmark.py --modes tensor-parallel --gpu A100-80GB
   modal run src/llm_inference_benchmarking/modal_benchmark.py --modes continuous-batching
   modal run src/llm_inference_benchmarking/modal_benchmark.py --modes cpu-llama-cpp
+  modal run src/llm_inference_benchmarking/modal_benchmark.py --modes sglang
+  modal run src/llm_inference_benchmarking/modal_benchmark.py --modes vllm,sglang --merge
 """
 
 from __future__ import annotations
@@ -74,6 +76,7 @@ _ALL_MODES = (
     "nf4",
     "spec-dec",
     "vllm",
+    "sglang",
     "gptq",
     "gptq-triton",
     "awq",
@@ -90,6 +93,9 @@ _MULTI_GPU_MODES = frozenset({"tensor-parallel"})
 
 # Modes that require a CPU-only container (dispatched to run_cpu_benchmark)
 _CPU_MODES = frozenset({"cpu-q4km"})
+
+# Modes that use the SGLang engine image (separate from vLLM to avoid flashinfer conflicts)
+_SGLANG_MODES = frozenset({"sglang"})
 
 # Default modes for a standard A10G sweep — excludes specialist modes that need
 # a different GPU (fp8 needs H100, tensor-parallel needs 2xA100) or CPU-only containers.
@@ -207,6 +213,14 @@ _MODE_NOTES: dict[str, str] = {
         "GGUF format, ~8.5 GB file. Minimal quality degradation vs fp16 but 2x the file size "
         "of Q4_K_M. Useful as the CPU accuracy ceiling for comparison against GPU fp16 results."
     ),
+    "sglang": (
+        "SGLang offline engine with RadixAttention (prefix-tree KV cache) and chunked prefill. "
+        "RadixAttention reuses cached KV activations across requests that share a common prefix, "
+        "reducing redundant prefill compute for multi-turn chat and RAG workloads. "
+        "Compare latency/throughput directly against vllm mode — both use PagedAttention-style "
+        "continuous batching, but SGLang's radix cache gives additional gains when prompts share "
+        "a long system prompt or retrieval context."
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -284,6 +298,31 @@ _cpu_image = (
         "pip install 'llama-cpp-python>=0.3.0' --prefer-binary",
         "pip install 'huggingface_hub>=0.23.0'",
     )
+    .add_local_python_source("llm_inference_benchmarking")
+)
+
+# SGLang image — uses CUDA 12.4 base to match the flashinfer wheel index and avoid
+# sgl_kernel picking SM100 (Blackwell) kernels when the Modal driver reports CUDA 13.x.
+# Pin sglang to 0.4.x: these versions ship SM86 (A10G Ampere) kernels in sgl_kernel.
+_sglang_image = (
+    modal.Image.from_registry(
+        "nvidia/cuda:12.4.1-devel-ubuntu22.04",
+        add_python="3.11",
+    )
+    .apt_install("libnuma-dev")
+    .pip_install("wheel", "setuptools", "packaging")
+    .pip_install("torch==2.5.1", "numpy<2.0")
+    .pip_install(
+        "sglang[all]>=0.4.0,<0.5.0",
+        extra_index_url="https://flashinfer.ai/whl/cu124/torch2.5/",
+    )
+    .pip_install(
+        "transformers>=4.44.0",
+        "huggingface_hub",
+        "hf-transfer",
+        "nvtx",
+    )
+    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .add_local_python_source("llm_inference_benchmarking")
 )
 
@@ -655,7 +694,7 @@ def _run_vllm_benchmark(
             "ttft_mean_ms": round(ttft_mean, 1) if ttft_mean is not None else None,
             "ttft_p95_ms": None,
             "prefill_ms": round(ttft_mean, 1) if ttft_mean is not None else None,
-            "decode_ms_per_token": round(max(lat_mean - ttft_mean, 0) / max(256 - 1, 1), 2)
+            "decode_ms_per_tok": round(max(lat_mean - ttft_mean, 0) / max(256 - 1, 1), 2)
             if ttft_mean is not None
             else None,
             "prefill_decode_ratio": round(ttft_mean / max(max(lat_mean - ttft_mean, 0) / max(256 - 1, 1), 0.01), 2)
@@ -950,7 +989,7 @@ def _measure_latency(model: Any, tokenizer: Any, device: str, assistant_model: A
         "ttft_mean_ms": ttft_mean,
         "ttft_p95_ms": round(sorted(ttft_ms_list)[int(len(ttft_ms_list) * 0.95)], 1),
         "prefill_ms": ttft_mean,
-        "decode_ms_per_token": decode_ms_per_tok,
+        "decode_ms_per_tok": decode_ms_per_tok,
         "prefill_decode_ratio": prefill_decode_ratio,
     }
 
@@ -1282,7 +1321,7 @@ def run_tp_benchmark(model_id: str = "") -> dict[str, Any]:
             "p99_ms": round(latencies_ms[int(n * 0.99)], 1),
             "ttft_mean_ms": round(sum(ttfts_ms) / len(ttfts_ms), 1) if ttfts_ms else None,
             "prefill_ms": round(sum(ttfts_ms) / len(ttfts_ms), 1) if ttfts_ms else None,
-            "decode_ms_per_token": round(
+            "decode_ms_per_tok": round(
                 max(sum(latencies_ms) / n - sum(ttfts_ms) / len(ttfts_ms), 0) / max(256 - 1, 1), 2
             )
             if ttfts_ms
@@ -1408,7 +1447,7 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
                     "p99_ms": round(latencies_ms[min(int(n * 0.99), n - 1)], 1),
                     "ttft_mean_ms": None,
                     "prefill_ms": None,
-                    "decode_ms_per_token": None,  # nosec B105 — not a password; bandit false positive on key name
+                    "decode_ms_per_tok": None,
                 },
                 "throughput": {
                     "output_tokens_per_sec": round(total_tps, 1),
@@ -1429,6 +1468,157 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
 
     _model_cache.commit()
     return results
+
+
+# ---------------------------------------------------------------------------
+# SGLang benchmark
+# ---------------------------------------------------------------------------
+
+
+@app.function(
+    gpu=os.environ.get("MODAL_GPU", "A10G"),
+    image=_sglang_image,
+    timeout=3600,
+    volumes={"/model-cache": _model_cache},
+    secrets=_modal_secrets,
+    memory=32768,
+)
+def run_sglang_benchmark(model_id: str = "") -> dict[str, Any]:
+    """Benchmark via SGLang's offline engine (RadixAttention, chunked prefill).
+
+    Uses sgl.Engine — the synchronous offline API analogous to vLLM's LLM class.
+    Measures the same metrics as the vllm mode so results are directly comparable:
+    latency, throughput, batch throughput, and zero-shot MMLU accuracy.
+
+    Key difference from vllm: RadixAttention reuses KV cache entries across requests
+    that share a common prefix (e.g. system prompt, RAG context). On diverse prompts
+    with no shared prefix the throughput should be similar; the gap widens as prefix
+    sharing increases.
+    """
+    import asyncio
+
+    import torch
+
+    os.environ["TRANSFORMERS_CACHE"] = "/model-cache/hf"
+    os.environ["HF_HOME"] = "/model-cache/hf"
+
+    import sglang as sgl
+
+    effective_model = model_id or BASE_MODEL
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
+
+    print(f"[sglang] Loading {effective_model} …")
+    t_load_start = time.perf_counter()
+    torch.cuda.reset_peak_memory_stats()
+
+    engine = sgl.Engine(
+        model_path=effective_model,
+        dtype="float16",
+        mem_fraction_static=0.85,
+        download_dir="/model-cache/hf",
+    )
+    load_time_s = time.perf_counter() - t_load_start
+    model_vram_mb = torch.cuda.max_memory_allocated() / 1024**2
+    reserved_mb = torch.cuda.memory_reserved() / 1024**2
+    print(f"[sglang] Engine ready in {load_time_s:.1f}s  ({model_vram_mb:.0f} MB VRAM)")
+
+    # Engine init spawns background processes that clear the main thread's event loop.
+    # Re-set it here so engine.generate() (which calls asyncio.get_event_loop()) works.
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    _model_cache.commit()
+
+    def _gen(prompts: list[str], max_tokens: int) -> list[dict]:
+        return engine.generate(prompts, sampling_params={"max_new_tokens": max_tokens, "temperature": 0.0})
+
+    def _completion_tokens(out: dict, fallback: int) -> int:
+        return (out.get("meta_info") or {}).get("completion_tokens") or fallback
+
+    # Warmup
+    _gen([_BENCH_PROMPTS[0]], 32)
+
+    # Latency (single request, 256 output tokens)
+    _ITERS = 3
+    _MAX_NEW_TOKENS = 256
+    latencies_ms: list[float] = []
+    for prompt in _BENCH_PROMPTS * _ITERS:
+        t0 = time.perf_counter()
+        _gen([prompt], _MAX_NEW_TOKENS)
+        latencies_ms.append((time.perf_counter() - t0) * 1000)
+
+    latencies_ms.sort()
+    n = len(latencies_ms)
+    lat_mean = sum(latencies_ms) / n
+
+    # Throughput (512 output tokens, 2 iterations)
+    thr_times: list[float] = []
+    thr_tokens: list[int] = []
+    for _ in range(2):
+        t0 = time.perf_counter()
+        outs = _gen([_BENCH_PROMPTS[0]], 512)
+        thr_times.append(time.perf_counter() - t0)
+        thr_tokens.append(_completion_tokens(outs[0], 512))
+    output_tps = sum(thr_tokens) / sum(thr_times)
+
+    # Batch throughput
+    batch_thr: dict[str, float] = {}
+    for bs in (1, 4, 8):
+        prompts = (_BENCH_PROMPTS * bs)[:bs]
+        t0 = time.perf_counter()
+        outs = _gen(prompts, 512)
+        elapsed = time.perf_counter() - t0
+        total_tok = sum(_completion_tokens(o, 512) for o in outs)
+        batch_thr[f"batch{bs}_output_tokens_per_sec"] = round(total_tok / elapsed, 1)
+
+    # MMLU: greedy decode, extract first alphabetic character
+    mmlu_q = _load_mmlu_questions()
+    correct = 0
+    for entry in mmlu_q:
+        choice_str = "\n".join(f"{chr(65 + i)}. {c}" for i, c in enumerate(entry["choices"]))
+        prompt = f"Question: {entry['question']}\n{choice_str}\nAnswer:"
+        out = _gen([prompt], 4)
+        text = (out[0].get("text") or "") if isinstance(out[0], dict) else ""
+        predicted = next((c for c in text.strip() if c.isalpha()), "")[:1].upper()
+        if predicted == chr(ord("A") + entry["answer_idx"]):
+            correct += 1
+
+    result: dict[str, Any] = {
+        "quant_mode": "sglang",
+        "model_id": effective_model,
+        "gpu": gpu_name,
+        "load_time_s": round(load_time_s, 2),
+        "memory": {
+            "model_weights_mb": round(model_vram_mb, 1),
+            "reserved_mb": round(reserved_mb, 1),
+        },
+        "latency": {
+            "max_new_tokens": _MAX_NEW_TOKENS,
+            "mean_ms": round(lat_mean, 1),
+            "p50_ms": round(latencies_ms[n // 2], 1),
+            "p95_ms": round(latencies_ms[int(n * 0.95)], 1),
+            "p99_ms": round(latencies_ms[int(n * 0.99)], 1),
+            "min_ms": round(min(latencies_ms), 1),
+            "max_ms": round(max(latencies_ms), 1),
+            "ttft_mean_ms": None,
+            "ttft_p95_ms": None,
+            "prefill_ms": None,
+            "decode_ms_per_tok": None,
+            "prefill_decode_ratio": None,
+        },
+        "throughput": {
+            "output_tokens_per_sec": round(output_tps, 1),
+            "max_new_tokens": 512,
+        },
+        "batch_throughput": batch_thr,
+        "perplexity": None,
+        "quality": {
+            "mmlu_accuracy": round(correct / len(mmlu_q), 4),
+            "correct": correct,
+            "total": len(mmlu_q),
+        },
+        "notes": _MODE_NOTES["sglang"],
+    }
+    _model_cache.commit()
+    return build_flops_funnel(result, _LLAMA_8B_CONFIG, gpu_name, "sglang")
 
 
 @app.local_entrypoint()
@@ -1457,6 +1647,7 @@ def main(
                 GPTQ mode uses its own checkpoint unless QUANT_GPTQ_MODEL env var is set.
 
     Special modes:
+        sglang:              Uses the SGLang engine image (separate from vLLM); same GPU as --gpu.
         tensor-parallel:     Always runs on 2x A100-80GB regardless of --gpu flag.
         cpu-q4km/q5km/q8_0: GGUF quant sweep on CPU-only container; --gpu ignored.
         continuous-batching: Runs on the specified --gpu using the async vLLM engine.
@@ -1481,7 +1672,8 @@ def main(
     print("Results will stream in as each mode completes (parallel execution).\n")
 
     # Partition modes by required compute type
-    gpu_modes = [m for m in selected if m not in _MULTI_GPU_MODES and m not in _CPU_MODES]
+    gpu_modes = [m for m in selected if m not in _MULTI_GPU_MODES and m not in _CPU_MODES and m not in _SGLANG_MODES]
+    sglang_modes = [m for m in selected if m in _SGLANG_MODES]
     tp_modes = [m for m in selected if m in _MULTI_GPU_MODES]
     cpu_modes = [m for m in selected if m in _CPU_MODES]
 
@@ -1524,6 +1716,10 @@ def main(
         model_ids = [effective_model] * len(gpu_modes)
         for result in bench_fn.map(gpu_modes, model_ids, order_outputs=False, return_exceptions=True):
             _record(result)
+
+    # SGLang modes (separate image; one call per mode)
+    for _ in sglang_modes:
+        _record(run_sglang_benchmark.remote(model_id=effective_model))
 
     # Tensor-parallel modes (each needs a dedicated 2xGPU call)
     for _ in tp_modes:

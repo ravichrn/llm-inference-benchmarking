@@ -3,13 +3,14 @@
   "base_model": "unsloth/Meta-Llama-3.1-8B-Instruct",
   "gpu": "A10G",
   "gpu_cost_per_hr_usd": 1.1,
-  "total_wall_time_s": 788.4,
+  "total_wall_time_s": 342.5,
   "modes_run": [
     "fp16",
     "int8",
     "nf4",
     "spec-dec",
     "vllm",
+    "sglang",
     "gptq",
     "gptq-triton",
     "awq",
@@ -2117,6 +2118,57 @@
         "memory_ceiling_tps": 37.5
       },
       "cost_per_1k_output_tokens_usd": 0.0105
+    },
+    {
+      "quant_mode": "sglang",
+      "model_id": "unsloth/Meta-Llama-3.1-8B-Instruct",
+      "gpu": "NVIDIA A10",
+      "load_time_s": 58.47,
+      "memory": {
+        "model_weights_mb": 0.0,
+        "reserved_mb": 0.0
+      },
+      "latency": {
+        "max_new_tokens": 256,
+        "mean_ms": 9967.1,
+        "p50_ms": 8900.4,
+        "p95_ms": 24808.7,
+        "p99_ms": 24808.7,
+        "min_ms": 8870.4,
+        "max_ms": 24808.7,
+        "ttft_mean_ms": null,
+        "ttft_p95_ms": null,
+        "prefill_ms": null,
+        "decode_ms_per_token": null,
+        "prefill_decode_ratio": null
+      },
+      "throughput": {
+        "output_tokens_per_sec": 28.5,
+        "max_new_tokens": 512
+      },
+      "batch_throughput": {
+        "batch1_output_tokens_per_sec": 28.6,
+        "batch4_output_tokens_per_sec": 107.8,
+        "batch8_output_tokens_per_sec": 220.3
+      },
+      "perplexity": null,
+      "quality": {
+        "mmlu_accuracy": 0.94,
+        "correct": 47,
+        "total": 50
+      },
+      "notes": "SGLang offline engine with RadixAttention (prefix-tree KV cache) and chunked prefill. RadixAttention reuses cached KV activations across requests that share a common prefix, reducing redundant prefill compute for multi-turn chat and RAG workloads. Compare latency/throughput directly against vllm mode \u2014 both use PagedAttention-style continuous batching, but SGLang's radix cache gives additional gains when prompts share a long system prompt or retrieval context.",
+      "flops_funnel": {
+        "flops_per_token": 48.0,
+        "achieved_tps": 28.5,
+        "arithmetic_intensity": 3.0,
+        "roofline_bound_tps": 37.5,
+        "achieved_mfu_pct": 76.0,
+        "bound": "memory",
+        "compute_ceiling_tps": 2604.1,
+        "memory_ceiling_tps": 37.5
+      },
+      "cost_per_1k_output_tokens_usd": 0.0107
     },
     {
       "quant_mode": "gptq",

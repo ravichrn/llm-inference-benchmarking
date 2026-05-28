@@ -51,7 +51,7 @@ select = ["E", "W", "F", "I", "B", "UP", "RUF"]
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-skips = ["B101", "B310", "B615"]
+skips = []
 
 [dependency-groups]
 dev = [

@@ -40,6 +40,7 @@ Runs modes in parallel on Modal GPU containers. Each mode measures latency (mean
 | `nf4` | bitsandbytes | A10G | 4-bit NormalFloat; best VRAM/quality tradeoff |
 | `spec-dec` | HuggingFace | A10G | Speculative decoding with 1B draft model |
 | `vllm` | vLLM | A10G | PagedAttention; best throughput |
+| `sglang` | SGLang | A10G | RadixAttention + chunked prefill; comparable to vLLM on diverse prompts |
 | `gptq` | gptqmodel | A10G | INT4 with Marlin/exllama2 CUDA kernels |
 | `gptq-triton` | gptqmodel | A10G | INT4 with Triton kernel backend; benchmarks compiler vs hand-tuned kernels |
 | `awq` | autoawq | A10G | INT4 AWQ with fused attention+MLP kernels; best quality at 4-bit |
@@ -50,7 +51,6 @@ Runs modes in parallel on Modal GPU containers. Each mode measures latency (mean
 | `tensor-parallel` | vLLM | **2× A100-80GB** | Sharded across 2 GPUs |
 | `cpu-q4km` | llama.cpp | CPU | GGUF Q4_K_M; edge/CPU deployment baseline |
 
-> `fp8`, `tensor-parallel`, and `cpu-q4km` are excluded from the default sweep — run them explicitly with `--modes`.
 
 ### Eval Harness + A/B Testing
 
@@ -62,7 +62,7 @@ Scores 50 prompts with an independent LLM judge (0–10). Regression gate exits 
 
 **Model:** `unsloth/Meta-Llama-3.1-8B-Instruct` · **GPU:** NVIDIA A10G ($1.10/hr) · **Raw data:** [results/modal_quant_a10g.json](results/modal_quant_a10g.json) · [H100](results/modal_quant_h100.json) · [2× A100-80GB](results/modal_quant_a100_80gb.json)
 
-TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill and decode; gptq-triton is 2.6× slower showing hand-tuned CUDA beats the Triton compiler on Ampere. AWQ via vLLM scores the highest MMLU of any INT4 mode (92%) — activation-aware calibration preserves accuracy — but throughput is lower than GPTQ due to vLLM's AWQ dequantization overhead on A10G.
+TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill and decode; gptq-triton is 2.6× slower showing hand-tuned CUDA beats the Triton compiler on Ampere. AWQ via vLLM scores the highest MMLU of any INT4 mode (92%) — activation-aware calibration preserves accuracy — but throughput is lower than GPTQ due to vLLM's AWQ dequantization overhead on A10G. SGLang matches vLLM throughput on diverse prompts (no shared prefix); RadixAttention advantage appears on workloads with a shared system prompt or retrieval context.
 
 | Mode | Engine | Latency (ms) | TTFT (ms) | Tok/s | Batch 8 tok/s | VRAM (MB) | MMLU | Cost/1k out (USD) |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
@@ -71,6 +71,7 @@ TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill an
 | **gptq** | gptqmodel | **7,558** | **32.8** | **33.3** | **267.7** | 5,488 | 76% | **$0.0092** |
 | **spec-dec** | HuggingFace | 8,187 | 41.5 | 31.3 | — | 17,758 | 74% | $0.0098 |
 | **vllm** | vLLM | 8,780 | — | 29.1 | 222.4 | PagedAttn ³ | **94%** | $0.0105 |
+| **sglang** | SGLang | 9,967 | — | 28.5 | 220.3 | PagedAttn ³ | **94%** | $0.0107 |
 | **torch-compile** | HuggingFace | 9,218 | 39.2 | 27.1 | 197.9 | 17,610 | 74% | $0.0113 |
 | **flash-attn** | HuggingFace (SDPA) | 9,558 | 41.7 | 26.7 | 202.4 | 17,610 | 74% | $0.0114 |
 | **fp16** | HuggingFace | 9,563 | 41.8 | 26.5 | 201.4 | 17,610 | 74% | $0.0115 |
@@ -82,8 +83,8 @@ TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill an
 
 > ¹ tensor-parallel runs on 2× A100-80GB ($8.00/hr combined); cost reflects the 2-GPU pair.
 > ² fp8 runs on H100 ($6.45/hr); 8.6× faster than A10G fp16 at lower cost-per-token despite higher hourly rate.
-> ³ vLLM and AWQ use PagedAttention; VRAM is dynamically allocated rather than reserved upfront.
-> ⁴ CPU MMLU uses a 20-question subset. Treat as directional only.
+> ³ vLLM, SGLang, and AWQ use PagedAttention-style KV management; VRAM is dynamically allocated rather than reserved upfront.
+> ⁴ CPU MMLU uses a 20-question subset.
 
 ### Model Evaluation
 
@@ -92,10 +93,11 @@ TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill an
 | Mode | CS & Programming | ML & Deep Learning | Systems & Networking | Statistics & Math | Overall |
 |---|---:|---:|---:|---:|---:|
 | **vllm** | **85.7%** | **95.0%** | **100%** | **100%** | **94%** |
+| **sglang** | **85.7%** | **95.0%** | **100%** | **100%** | **94%** |
 | gptq | 78.6% | 70.0% | 77.8% | 85.7% | 76% |
 | fp16 / int8 / nf4 * | 78.6% | 70.0% | 66.7% | 85.7% | 74% |
 
-> \* All HuggingFace-backed modes (fp16, int8, nf4, spec-dec, flash-attn, torch-compile) produce identical predictions at temperature=0 — same model, deterministic decoding. vLLM scores 20pp higher because it uses PagedAttention's token-level logprobs rather than the HuggingFace generation path; the difference reflects evaluation method sensitivity rather than model quality. GPTQ gains one Systems question (7/9 vs 6/9) over HF modes.
+> \* All HuggingFace-backed modes (fp16, int8, nf4, spec-dec, flash-attn, torch-compile) produce identical predictions at temperature=0 — same model, deterministic decoding. vLLM and SGLang both score 94% using greedy decoding with their respective engines. GPTQ gains one Systems question (7/9 vs 6/9) over HF modes.
 
 ### Decision guide
 
@@ -106,7 +108,7 @@ TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill an
 | Single GPU, lowest latency | gptq (Marlin kernels) |
 | Single GPU, best INT4 quality (accuracy > speed) | awq (92% MMLU vs gptq 76%) |
 | Triton vs CUDA kernel comparison | gptq-triton vs gptq |
-| Single GPU, best throughput + accuracy | vllm |
+| Single GPU, best throughput + accuracy | vllm or sglang (equivalent on diverse prompts; sglang wins with shared-prefix workloads) |
 | VRAM ≤ 8 GB | nf4 |
 | Baseline / reproducibility reference | fp16 |
 | CPU / edge deployment | cpu-q4km |
