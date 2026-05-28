@@ -20,8 +20,14 @@ RESULTS_DIR="results"
 
 mkdir -p "$PROFILE_DIR" "$RESULTS_DIR"
 
-if ! command -v nsys &>/dev/null; then
-  echo "nsys not found. Install with: sudo apt-get install -y nsight-systems"
+# Prefer nsight-systems-2023.3.3 whose importer works on Ubuntu 22.04.
+# The default nsys 2024.x importer requires a libssh version Ubuntu 22.04 doesn't ship.
+if [ -x "/usr/lib/nsight-systems-2023.3.3/bin/nsys" ]; then
+  NSYS="/usr/lib/nsight-systems-2023.3.3/bin/nsys"
+elif command -v nsys &>/dev/null; then
+  NSYS="nsys"
+else
+  echo "nsys not found. Install with: sudo apt-get install -y nsight-systems-2023.3.3"
   exit 1
 fi
 
@@ -31,7 +37,7 @@ for mode in "${MODE_LIST[@]}"; do
   echo ""
   echo "=== Profiling: $mode ==="
 
-  nsys profile \
+  "$NSYS" profile \
     --output "${PROFILE_DIR}/${mode}" \
     --trace cuda,nvtx \
     --force-overwrite true \
@@ -42,10 +48,10 @@ for mode in "${MODE_LIST[@]}"; do
 
   REP="${PROFILE_DIR}/${mode}.nsys-rep"
 
-  nsys stats --report gpukernsum --format csv "$REP" \
+  "$NSYS" stats --report gpukernsum --format csv "$REP" \
     > "${PROFILE_DIR}/${mode}_kernsum.csv" 2>/dev/null || true
 
-  nsys stats --report gpumemtimesum --format csv "$REP" \
+  "$NSYS" stats --report gpumemtimesum --format csv "$REP" \
     > "${PROFILE_DIR}/${mode}_memsum.csv" 2>/dev/null || true
 
   python profiling/parse_nsys.py \
