@@ -37,16 +37,16 @@ for mode in "${MODE_LIST[@]}"; do
   echo ""
   echo "=== Profiling: $mode ==="
 
-  NSYS_EXTRA=()
+  EXTRA_FLAGS=""
   if [[ "$mode" == "vllm" || "$mode" == "sglang" ]]; then
-    NSYS_EXTRA=(--trace-fork-before-exec=true)
+    EXTRA_FLAGS="--trace-fork-before-exec=true"
   fi
 
   "$NSYS" profile \
     --output "${PROFILE_DIR}/${mode}" \
     --trace cuda,nvtx \
     --force-overwrite true \
-    "${NSYS_EXTRA[@]+"${NSYS_EXTRA[@]}"}" \
+    $EXTRA_FLAGS \
     python profiling/profile_benchmark.py \
       --mode "$mode" \
       --cache-dir "$CACHE_DIR" \
