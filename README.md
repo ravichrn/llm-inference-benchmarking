@@ -1,6 +1,6 @@
 # llm-inference-benchmarking
 
-Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, throughput, cost, and quality across routing tiers and quantization formats — including zero-shot MMLU evaluation, task-specific LLM-as-judge eval with a deterministic release gate, FLOPs roofline analysis, latency-cost autoscaler signal, and cross-provider A/B testing. Deployable as a live HTTPS endpoint on Modal.
+Cost-aware LLM routing gateway and GPU benchmarking toolkit. Covers 15 quantization/serving modes (fp16→fp8, bitsandbytes, GPTQ, AWQ, vLLM, SGLang, speculative decoding, tensor-parallel) with latency, throughput, VRAM, perplexity, MMLU accuracy, FLOPs roofline, and GPU kernel profiling via Nsight Systems. Gateway features: tier routing (cheap/balanced/premium/auto), rate limiting, SLA p99 caps, budget caps, LLM-as-judge eval with a regression gate, latency-cost autoscaler signal, and cross-provider A/B testing. Deployable as a live HTTPS endpoint on Modal.
 
 ---
 
@@ -25,31 +25,13 @@ Each request goes through: rate limiter → routing policy (prompt length + role
 
 **FastAPI endpoints:** `POST /generate` · `POST /ab` · `GET /health` · `GET /usage/summary` · `GET /metrics` · `GET /sla/status`
 
-**Live deployment:** `modal_gateway.py` wraps the FastAPI app as a Modal HTTPS endpoint with a persistent SQLite ledger and `keep_warm=1`. See [Running the live gateway](#running-the-live-gateway).
+**Live deployment:** See [Running the live gateway](#running-the-live-gateway).
 
 ### GPU Quantization Benchmark
 
 Runs modes in parallel on Modal GPU containers. Each mode measures latency (mean/P95/TTFT), throughput (batch 1/4/8), VRAM, perplexity (HF modes), zero-shot MMLU accuracy, and FLOPs roofline (arithmetic intensity, MFU %, compute vs memory bound). Results merge into `results/modal_quant_<gpu>.json`.
 
-**Benchmark modes:**
-
-| Mode | Engine | GPU | Notes |
-|---|---|---|---|
-| `fp16` | HuggingFace | A10G | Full precision baseline |
-| `int8` | bitsandbytes | A10G | 8-bit; compute-bound on Ampere |
-| `nf4` | bitsandbytes | A10G | 4-bit NormalFloat; best VRAM/quality tradeoff |
-| `spec-dec` | HuggingFace | A10G | Speculative decoding with 1B draft model |
-| `vllm` | vLLM | A10G | PagedAttention; best throughput |
-| `sglang` | SGLang | A10G | RadixAttention + chunked prefill; comparable to vLLM on diverse prompts |
-| `gptq` | gptqmodel | A10G | INT4 with Marlin/exllama2 CUDA kernels |
-| `gptq-triton` | gptqmodel | A10G | INT4 with Triton kernel backend; benchmarks compiler vs hand-tuned kernels |
-| `awq` | autoawq | A10G | INT4 AWQ with fused attention+MLP kernels; best quality at 4-bit |
-| `flash-attn` | HuggingFace (SDPA) | A10G | Tiled attention; O(n) memory |
-| `torch-compile` | HuggingFace | A10G | `torch.compile()` graph optimization |
-| `continuous-batching` | vLLM async | A10G | Dynamic batching for multi-tenant serving |
-| `fp8` | vLLM | **H100** | Native FP8 tensor cores (SW emulation on A10G) |
-| `tensor-parallel` | vLLM | **2× A100-80GB** | Sharded across 2 GPUs |
-| `cpu-q4km` | llama.cpp | CPU | GGUF Q4_K_M; edge/CPU deployment baseline |
+**Modes:** fp16 · int8 · nf4 · spec-dec · vllm · sglang · gptq · gptq-triton · awq · flash-attn · torch-compile · continuous-batching (A10G) · fp8 (H100) · tensor-parallel (2× A100-80GB) · cpu-q4km (CPU)
 
 
 ### Eval Harness + A/B Testing
@@ -85,6 +67,18 @@ TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill an
 > ² fp8 runs on H100 ($6.45/hr); 8.6× faster than A10G fp16 at lower cost-per-token despite higher hourly rate.
 > ³ vLLM, SGLang, and AWQ use PagedAttention-style KV management; VRAM is dynamically allocated rather than reserved upfront.
 > ⁴ CPU MMLU uses a 20-question subset.
+> **Perplexity (wikitext-2, lower = better):** fp16/spec-dec/flash-attn/torch-compile = 5.099 · int8 = 5.13 · nf4 = 5.275 · gptq/gptq-triton = 5.306–5.307. All HF-backed modes at the same precision produce identical perplexity; nf4 and gptq show mild degradation (~3.5% and ~4%).
+
+### Continuous batching throughput scaling
+
+| Concurrency | Throughput (tok/s) | P99 latency | Req/s |
+|---|---:|---:|---:|
+| 1 | 29.6 | 9,750ms | 0.12 |
+| 4 | 113 | 9,072ms | 0.44 |
+| 8 | 223 | 9,188ms | 0.87 |
+| 16 | **427** | 9,590ms | 1.67 |
+
+Throughput scales 14.4× (c=1→c=16) while p99 latency stays flat — PagedAttention eliminates KV cache fragmentation that would otherwise cause tail latency growth under load.
 
 ### Model Evaluation
 
@@ -115,6 +109,46 @@ TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill an
 
 ---
 
+## GPU Kernel Profiling (Nsight Systems, A10G)
+
+Profiled on a Lambda Labs A10G instance using `nsys profile --trace cuda,nvtx`. Raw data: [results/profile_kernels_fp16.json](results/profile_kernels_fp16.json) · [int8](results/profile_kernels_int8.json) · [nf4](results/profile_kernels_nf4.json)
+
+> vLLM and SGLang kernel breakdown not available — nsys cannot merge CUDA events from multi-process workers with the version that runs on Ubuntu 22.04.
+
+### Kernel category breakdown
+
+| Mode | GPU time (ms) | Matmul% | Attention% | Dequantize% | Other% | Compute:Memcpy |
+|---|---:|---:|---:|---:|---:|---:|
+| fp16 | 174,876 | **58.4** | 1.0 | 0.0 | 39.3 | **102.7** |
+| int8 | 136,758 | **63.5** | 0.7 | 2.1 | 27.4 | 40.6 |
+| nf4  | 94,053  | **58.4** | 1.6 | 6.5 | 31.1 | 65.8 |
+
+### Top kernel per mode
+
+| Mode | Top kernel | % GPU time | Avg latency |
+|---|---|---:|---:|
+| fp16 | `ampere_fp16_s16816gemm` (tensor core GEMM) | 44.2% | 247µs |
+| int8 | `gemmSN_kernel_int32` (scalar INT8 GEMM) | 63.5% | 79µs |
+| nf4  | `kgemm_4bit_inference_naive` (4-bit GEMM) | 58.4% | 50µs |
+
+### FLOPs roofline (A10G, batch=1 decode)
+
+| Mode | MFU % | Bound | Achieved tok/s | Memory ceiling | Compute ceiling |
+|---|---:|---|---:|---:|---:|
+| vllm | **77.6%** | memory | 29.1 | 37.5 | 2,604 |
+| sglang | 76.0% | memory | 28.5 | 37.5 | 2,604 |
+| awq | 28.5% | memory | 10.7 | 37.5 | 2,604 |
+
+All decode-phase modes are memory-bandwidth-bound at batch=1 (arithmetic intensity 3.0 FLOP/byte vs ridge point ~520). AWQ's low MFU reflects dequantization overhead eating into effective bandwidth. Compute ceiling assumes 48 GFLOPs/token (6×8B params) at A10G 312 TFLOPS.
+
+**fp16** — compute-bound (ratio 102.7); `ampere_fp16_s16816gemm` tensor core GEMM at 247µs. FlashAttention is 1% of GPU time.
+
+**int8** — 3.4× slower than fp16 despite lower precision; `gemmSN_kernel_int32` bypasses Ampere tensor cores (scalar path), 3.5× more launches (1.09M vs 312K), ratio drops to 41. BitsAndBytes INT8 has no tensor core path on Ampere.
+
+**nf4** — 1.7× slower than fp16; `kgemm_4bit_inference_naive` (no tensor core path) + 6.5% dequantize overhead, double the int8 cost.
+
+---
+
 ## Gateway Results
 
 **Backend:** OpenAI · **Live endpoint:** Modal HTTPS · **Raw data:** [results/gateway_benchmark_snapshot.json](results/gateway_benchmark_snapshot.json)
@@ -133,14 +167,6 @@ TTFT ≈ prefill duration. GPTQ (Marlin CUDA kernels) has the fastest prefill an
 - cheap is **166× cheaper** than premium and **14× faster** — 3 of 6 demo requests routed there automatically
 - Long prompt (100 repetitions) correctly escalates to `balanced` via length heuristic
 - Keyword signals (`trade-offs`, `compare`) correctly escalate to `premium`
-
-### Usage summary (6 requests)
-
-| Tier | Requests | Avg latency | Total cost |
-|---|---|---:|---:|
-| cheap | 3 | 1,412ms | $0.00015 |
-| balanced | 1 | 19,893ms | $0.00953 |
-| premium | 2 | 27,698ms | $0.02491 |
 
 ### Concurrent load
 
@@ -178,8 +204,6 @@ All three gate runs passed (threshold 6.0). QA/reasoning score highest (9.7–9.
 
 ## Running the live gateway
 
-`modal_gateway.py` deploys the full FastAPI gateway as a persistent HTTPS endpoint on Modal. The ledger is stored in a Modal volume so usage history survives container restarts.
-
 **Setup Modal secrets (one-time):**
 ```bash
 modal secret create openai-secret OPENAI_API_KEY=sk-...
@@ -189,11 +213,8 @@ modal secret create gateway-secret GATEWAY_API_KEY=your-secret
 
 **Deploy:**
 ```bash
-# Live reload (dev)
-modal serve src/llm_inference_benchmarking/modal_gateway.py
-
-# Permanent deployment
-modal deploy src/llm_inference_benchmarking/modal_gateway.py
+modal serve src/llm_inference_benchmarking/modal_gateway.py   # dev (live reload)
+modal deploy src/llm_inference_benchmarking/modal_gateway.py  # permanent
 ```
 
 **Demo — routing decisions + autoscaler signal:**
@@ -221,54 +242,29 @@ See [.env.example](.env.example) for the full reference (model overrides, vLLM c
 
 ### Gateway benchmark (tier/cost/latency)
 
-Requires provider credentials in `.env`. The benchmark calls providers directly — the gateway server does **not** need to be running.
-
 ```bash
 uv run llm-gateway-bench --iterations 3 --output results/gateway_benchmark_snapshot.json
-```
-
-**Prompt caching benchmark** — measures cold vs warm latency (Claude automatic for prompts >1024 tokens, OpenAI same threshold):
-
-```bash
-uv run llm-gateway-bench --cache
-# → writes results/cache_benchmark_snapshot.json
+uv run llm-gateway-bench --cache   # cold vs warm latency (auto prompt caching >1024 tokens)
 ```
 
 ### Quantization benchmark (GPU)
 
-Runs modes in parallel on a cloud GPU. Requires a Modal account (`modal setup` once per machine).
-
-**Supported GPUs:** `T4` ($0.59/hr) · `A10G` ($1.10/hr) · `A100-40GB` ($3.70/hr) · `A100-80GB` ($4.00/hr) · `H100` ($6.45/hr)
+Requires `modal setup` once. **Supported GPUs:** `T4` ($0.59/hr) · `A10G` ($1.10/hr) · `A100-40GB` ($3.70/hr) · `A100-80GB` ($4.00/hr) · `H100` ($6.45/hr)
 
 ```bash
-# Default A10G sweep (fp16, int8, nf4, spec-dec, vllm, gptq, gptq-triton,
-# awq, flash-attn, torch-compile, continuous-batching)
-uv run modal run src/llm_inference_benchmarking/modal_benchmark.py
-
-# Merge new results into existing file (keeps untouched modes)
-uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --merge
-
-# Specialist modes (each requires separate run)
-uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --modes fp8        # needs H100
-uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --modes cpu-q4km  # CPU container
-uv run modal run src/llm_inference_benchmarking/modal_benchmark.py \
-  --modes tensor-parallel --gpu A100-80GB                                             # 2× A100-80GB
-
-# Cross-model or cross-GPU
-uv run modal run src/llm_inference_benchmarking/modal_benchmark.py \
-  --model mistralai/Mistral-7B-Instruct-v0.3 --gpu A100-40GB
+uv run modal run src/llm_inference_benchmarking/modal_benchmark.py           # default A10G sweep
+uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --merge  # keep untouched modes
+uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --modes fp8                          # H100
+uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --modes tensor-parallel --gpu A100-80GB
+uv run modal run src/llm_inference_benchmarking/modal_benchmark.py --model mistralai/Mistral-7B-Instruct-v0.3 --gpu A100-40GB
 ```
-
-NVTX range markers are active around warmup, TTFT, and throughput loops — attach Nsight Systems with `nsys profile --trace=cuda,nvtx` to capture a GPU timeline.
 
 ### Concurrent load test
 
 Requires the gateway to be running.
 
 ```bash
-uv run llm-load-test --concurrency 1,5,10,20 --total 50 --tier cheap
-uv run llm-load-test --concurrency 10 --total 100 --tier balanced \
-  --output results/load_test_balanced.json
+uv run llm-load-test --concurrency 1,5,10,20 --total 50 --tier cheap --output results/load_test_cheap.json
 ```
 
 ### Analysis charts

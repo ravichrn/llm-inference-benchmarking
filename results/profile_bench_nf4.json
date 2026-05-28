@@ -1,0 +1,10 @@
+{
+  "mode": "nf4",
+  "gpu": "NVIDIA A10",
+  "load_time_s": 9.32,
+  "vram_mb": 5559.1,
+  "latency_mean_ms": 16705.1,
+  "latency_p50_ms": 16699.0,
+  "latency_p95_ms": 16754.4,
+  "output_tps": 15.3
+}

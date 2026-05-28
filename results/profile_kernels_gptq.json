@@ -1,0 +1,21 @@
+{
+  "mode": "gptq",
+  "total_gpu_time_ms": 0.0,
+  "total_memcpy_ms": 0.0,
+  "compute_memcpy_ratio": 0.0,
+  "top_kernels": [],
+  "categories_ms": {
+    "attention": 0.0,
+    "matmul": 0.0,
+    "dequantize": 0.0,
+    "layernorm": 0.0,
+    "other": 0.0
+  },
+  "categories_pct": {
+    "attention": 0.0,
+    "matmul": 0.0,
+    "dequantize": 0.0,
+    "layernorm": 0.0,
+    "other": 0.0
+  }
+}

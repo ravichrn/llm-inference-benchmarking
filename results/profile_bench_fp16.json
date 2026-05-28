@@ -1,0 +1,10 @@
+{
+  "mode": "fp16",
+  "gpu": "NVIDIA A10",
+  "load_time_s": 6.98,
+  "vram_mb": 15316.5,
+  "latency_mean_ms": 10119.0,
+  "latency_p50_ms": 10121.9,
+  "latency_p95_ms": 10133.9,
+  "output_tps": 25.2
+}

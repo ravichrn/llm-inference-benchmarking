@@ -1,0 +1,162 @@
+{
+  "mode": "nf4",
+  "total_gpu_time_ms": 94052.9,
+  "total_memcpy_ms": 1429.8,
+  "compute_memcpy_ratio": 65.78,
+  "top_kernels": [
+    {
+      "name": "void kgemm_4bit_inference_naive<__half, (int)128, (int)16>(int, int, int, T1 *, ",
+      "total_ms": 54958.217,
+      "count": 1092672,
+      "pct_gpu_time": 58.43,
+      "avg_us": 50.3
+    },
+    {
+      "name": "void gemv2T_kernel_val<int, int, __half, __half, __half, float, (int)128, (int)1",
+      "total_ms": 10576.922,
+      "count": 4896,
+      "pct_gpu_time": 11.25,
+      "avg_us": 2160.32
+    },
+    {
+      "name": "void kDequantizeBlockwise<float, (int)512, (int)64, (int)8, (int)0>(float *, uns",
+      "total_ms": 5417.212,
+      "count": 1096704,
+      "pct_gpu_time": 5.76,
+      "avg_us": 4.94
+    },
+    {
+      "name": "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kerne",
+      "total_ms": 5397.903,
+      "count": 1096928,
+      "pct_gpu_time": 5.74,
+      "avg_us": 4.92
+    },
+    {
+      "name": "void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kerne",
+      "total_ms": 1697.937,
+      "count": 627858,
+      "pct_gpu_time": 1.81,
+      "avg_us": 2.7
+    },
+    {
+      "name": "void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kerne",
+      "total_ms": 1633.507,
+      "count": 314496,
+      "pct_gpu_time": 1.74,
+      "avg_us": 5.19
+    },
+    {
+      "name": "void at::native::reduce_kernel<(int)512, (int)1, at::native::ReduceOp<float, at:",
+      "total_ms": 1212.286,
+      "count": 318464,
+      "pct_gpu_time": 1.29,
+      "avg_us": 3.81
+    },
+    {
+      "name": "void at::native::<unnamed>::CatArrayBatchedCopy<at::native::<unnamed>::OpaqueTyp",
+      "total_ms": 1171.796,
+      "count": 314496,
+      "pct_gpu_time": 1.25,
+      "avg_us": 3.73
+    },
+    {
+      "name": "void at::native::<unnamed>::CatArrayBatchedCopy_contig<at::native::<unnamed>::Op",
+      "total_ms": 1110.027,
+      "count": 311040,
+      "pct_gpu_time": 1.18,
+      "avg_us": 3.57
+    },
+    {
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctor_a",
+      "total_ms": 1065.81,
+      "count": 625536,
+      "pct_gpu_time": 1.13,
+      "avg_us": 1.7
+    },
+    {
+      "name": "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda",
+      "total_ms": 1046.612,
+      "count": 328032,
+      "pct_gpu_time": 1.11,
+      "avg_us": 3.19
+    },
+    {
+      "name": "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda",
+      "total_ms": 995.302,
+      "count": 328032,
+      "pct_gpu_time": 1.06,
+      "avg_us": 3.03
+    },
+    {
+      "name": "void pytorch_flash::flash_fwd_splitkv_kernel<pytorch_flash::Flash_fwd_kernel_tra",
+      "total_ms": 987.278,
+      "count": 94496,
+      "pct_gpu_time": 1.05,
+      "avg_us": 10.45
+    },
+    {
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BinaryFunctor",
+      "total_ms": 855.848,
+      "count": 473742,
+      "pct_gpu_time": 0.91,
+      "avg_us": 1.81
+    },
+    {
+      "name": "void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kerne",
+      "total_ms": 798.752,
+      "count": 313344,
+      "pct_gpu_time": 0.85,
+      "avg_us": 2.55
+    },
+    {
+      "name": "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kerne",
+      "total_ms": 692.129,
+      "count": 318240,
+      "pct_gpu_time": 0.74,
+      "avg_us": 2.17
+    },
+    {
+      "name": "void kDequantizeBlockwise<__half, (int)512, (int)64, (int)8, (int)2>(float *, un",
+      "total_ms": 668.101,
+      "count": 4032,
+      "pct_gpu_time": 0.71,
+      "avg_us": 165.7
+    },
+    {
+      "name": "void pytorch_flash::flash_fwd_kernel<pytorch_flash::Flash_fwd_kernel_traits<(int",
+      "total_ms": 531.819,
+      "count": 61600,
+      "pct_gpu_time": 0.57,
+      "avg_us": 8.63
+    },
+    {
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::rsqrt_kernel_",
+      "total_ms": 488.38,
+      "count": 318240,
+      "pct_gpu_time": 0.52,
+      "avg_us": 1.53
+    },
+    {
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctorOn",
+      "total_ms": 477.154,
+      "count": 318240,
+      "pct_gpu_time": 0.51,
+      "avg_us": 1.5
+    }
+  ],
+  "categories_ms": {
+    "attention": 1519.1,
+    "matmul": 54958.2,
+    "dequantize": 6085.3,
+    "layernorm": 0.0,
+    "other": 29220.4
+  },
+  "categories_pct": {
+    "attention": 1.6,
+    "matmul": 58.4,
+    "dequantize": 6.5,
+    "layernorm": 0.0,
+    "other": 31.1
+  }
+}
