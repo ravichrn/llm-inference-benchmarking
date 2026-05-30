@@ -23,12 +23,30 @@ _log = logging.getLogger(__name__)
 # Cost tier ordering: prefer cheaper models first
 _TIER_ORDER = ["cheap", "balanced", "premium"]
 
+# (results_dir_str, mtime_fingerprint, scores) — keyed by dir so different dirs don't cross-contaminate
+_scores_cache: tuple[str, float, dict[str, float]] | None = None
+
+
+def _dir_mtime(results_dir: Path) -> float:
+    try:
+        return max(
+            (f.stat().st_mtime for f in results_dir.glob("modal_quant_benchmark*.json")),
+            default=0.0,
+        )
+    except Exception:
+        return 0.0
+
 
 def _load_quality_scores(results_dir: Path) -> dict[str, float]:
     """Read all modal_benchmark JSON files and extract model→quality_score."""
-    scores: dict[str, float] = {}
+    global _scores_cache
     if not results_dir.is_dir():
-        return scores
+        return {}
+    dir_key = str(results_dir)
+    mtime = _dir_mtime(results_dir)
+    if _scores_cache is not None and _scores_cache[0] == dir_key and _scores_cache[1] == mtime:
+        return _scores_cache[2]
+    scores: dict[str, float] = {}
     for fpath in results_dir.glob("modal_quant_benchmark*.json"):
         try:
             data = json.loads(fpath.read_text())
@@ -49,6 +67,7 @@ def _load_quality_scores(results_dir: Path) -> dict[str, float]:
         except Exception as exc:
             _log.warning("Skipping %s: %s", fpath.name, exc)
             continue
+    _scores_cache = (dir_key, mtime, scores)
     return scores
 
 

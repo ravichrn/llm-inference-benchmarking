@@ -1,8 +1,8 @@
 """Modal GPU quantization benchmark for Llama-3.1-8B-Instruct (ungated mirror).
 
-Measures all key metrics across quantization modes (fp16, int8, nf4, spec-dec,
-vllm, gptq, gptq-triton, awq, fp8, flash-attn, torch-compile, tensor-parallel,
-continuous-batching, cpu-llama-cpp):
+Measures all key metrics across quantization modes (fp16, int8, nf4, nf4-dq, spec-dec,
+vllm, gptq, fp8, flash-attn, torch-compile, tensor-parallel, continuous-batching,
+cpu-llama-cpp):
   - Latency: mean, p50, p95, p99, time-to-first-token (ms)
   - Throughput: output tokens/sec, total tokens/sec
   - Memory: peak GPU VRAM (MB)
@@ -12,7 +12,7 @@ continuous-batching, cpu-llama-cpp):
 Prerequisites:
   modal setup          # authenticate with your Modal account (one-time)
 
-Optional .env overrides (passed via modal.Secret.from_dict from the env at launch time):
+Optional .env overrides (Modal reads .env automatically via Secret.from_dotenv):
   HUGGING_FACE_HUB_TOKEN=<token>   # only needed if switching to a gated model
   QUANT_GPTQ_MODEL=<hf_model_id>   # override default GPTQ checkpoint
   GGUF_REPO=<hf_repo_id>           # override default GGUF repo for cpu-llama-cpp mode
@@ -25,8 +25,6 @@ Run:
   modal run src/llm_inference_benchmarking/modal_benchmark.py --modes tensor-parallel --gpu A100-80GB
   modal run src/llm_inference_benchmarking/modal_benchmark.py --modes continuous-batching
   modal run src/llm_inference_benchmarking/modal_benchmark.py --modes cpu-llama-cpp
-  modal run src/llm_inference_benchmarking/modal_benchmark.py --modes sglang
-  modal run src/llm_inference_benchmarking/modal_benchmark.py --modes vllm,sglang --merge
 """
 
 from __future__ import annotations
@@ -40,11 +38,7 @@ from typing import Any
 
 import modal
 
-from llm_inference_benchmarking.flops import build_flops_funnel
-from llm_inference_benchmarking.mmlu import (
-    _load_mmlu_questions,
-    _measure_quality_vllm,
-)
+from llm_inference_benchmarking.mmlu import _MMLU_SUBJECT_RANGES, _MMLU_SUBSET
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -57,9 +51,6 @@ BASE_MODEL = "unsloth/Meta-Llama-3.1-8B-Instruct"
 
 # Pre-quantized GPTQ checkpoint (ungated). Override via QUANT_GPTQ_MODEL in .env.
 _DEFAULT_GPTQ_MODEL = "hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4"
-
-# Pre-quantized AWQ checkpoint (ungated). Override via QUANT_AWQ_MODEL in .env.
-_DEFAULT_AWQ_MODEL = "hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4"
 
 
 # Draft model for speculative decoding — same tokenizer vocab, ~2 GB VRAM.
@@ -74,9 +65,9 @@ _ALL_MODES = (
     "fp16",
     "int8",
     "nf4",
+    "nf4-dq",
     "spec-dec",
     "vllm",
-    "sglang",
     "gptq",
     "gptq-triton",
     "awq",
@@ -85,28 +76,35 @@ _ALL_MODES = (
     "torch-compile",
     "tensor-parallel",
     "continuous-batching",
+    "trtllm",
+    "tgi",
+    "cpu-q2k",
     "cpu-q4km",
+    "cpu-q5km",
+    "cpu-q8_0",
 )
 
 # Modes that require multiple GPUs (dispatched to run_tp_benchmark instead of run_quant_benchmark)
 _MULTI_GPU_MODES = frozenset({"tensor-parallel"})
 
 # Modes that require a CPU-only container (dispatched to run_cpu_benchmark)
-_CPU_MODES = frozenset({"cpu-q4km"})
+_CPU_MODES = frozenset({"cpu-q2k", "cpu-q4km", "cpu-q5km", "cpu-q8_0"})
 
-# Modes that use the SGLang engine image (separate from vLLM to avoid flashinfer conflicts)
-_SGLANG_MODES = frozenset({"sglang"})
+# Modes that require the TGI Docker image (dispatched to run_tgi_benchmark)
+_TGI_MODES = frozenset({"tgi"})
 
-# Default modes for a standard A10G sweep — excludes specialist modes that need
-# a different GPU (fp8 needs H100, tensor-parallel needs 2xA100) or CPU-only containers.
-_DEFAULT_MODES = tuple(m for m in _ALL_MODES if m not in _CPU_MODES and m not in _MULTI_GPU_MODES and m != "fp8")
+# Modes that require the TensorRT-LLM engine build step
+_TRTLLM_MODES = frozenset({"trtllm"})
 
 # Default GGUF repo for cpu-llama-cpp modes; override via GGUF_REPO env var
 _DEFAULT_GGUF_REPO = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
 
 # GGUF quantization levels and their mode names (ordered cheap→expensive in quality)
 _GGUF_LEVELS: list[tuple[str, str]] = [
+    ("Q2_K", "cpu-q2k"),
     ("Q4_K_M", "cpu-q4km"),
+    ("Q5_K_M", "cpu-q5km"),
+    ("Q8_0", "cpu-q8_0"),
 ]
 
 # Prompts for latency / throughput measurement
@@ -118,13 +116,12 @@ _BENCH_PROMPTS = [
     "What are the key trade-offs between model quantization and full-precision inference?",
 ]
 
-# Model config for FLOPs accounting (Llama-3.1-8B architecture)
-_LLAMA_8B_CONFIG = {
-    "num_params": 8_000_000_000,
-    "num_layers": 32,
-    "hidden": 4096,
-    "seq_len": 512,
-}
+
+def _question_subject(idx: int) -> str:
+    for start, end, subj in _MMLU_SUBJECT_RANGES:
+        if start <= idx <= end:
+            return subj
+    return "other"
 
 
 # Per-mode notes surfaced in output JSON — explains known caveats so results are self-interpreting
@@ -142,23 +139,34 @@ _MODE_NOTES: dict[str, str] = {
         "acceptance rate — higher on predictable/repetitive text, lower on diverse prompts."
     ),
     "gptq": (
-        "GPTQ INT4 loaded via gptqmodel with the exllama2 CUDA backend. Marlin fused kernels "
-        "give fastest prefill on A10G. Compare against gptq-triton to isolate kernel backend "
-        "impact, and against awq for accuracy/speed tradeoff at same bitwidth."
+        "GPTQ (Generative Pre-Trained Transformer Quantization) is a post-training INT4 "
+        "quantization method using second-order weight updates (OBQ). Loaded from a "
+        "pre-quantized checkpoint via auto-gptq. On A10G, fused CUDA kernels are used when "
+        "exllama backend is available; otherwise falls back to triton (slower). Compare "
+        "against AWQ — both are INT4 but GPTQ uses row-wise calibration vs AWQ's "
+        "activation-aware column scaling."
     ),
     "gptq-triton": (
-        "GPTQ INT4 with the Triton kernel backend instead of exllama2. Triton-generated CUDA "
-        "kernels are more portable across GPU architectures but typically 10-30% slower than "
-        "Marlin/exllama2 on A10G Ampere. Useful for measuring the performance gap between "
-        "hand-tuned CUDA kernels (exllama2/Marlin) and compiler-generated Triton kernels, and "
-        "for architectures where exllama2 kernels are not available."
+        "GPTQ with the Triton kernel backend forced (no exllama). Triton kernels are "
+        "portable across GPU generations but are typically 10-30% slower than exllama's "
+        "hand-tuned CUDA kernels on Ampere. Use this mode to isolate the kernel backend "
+        "contribution to throughput when comparing against the default gptq mode."
     ),
     "awq": (
-        "AWQ (Activation-aware Weight Quantization) INT4 via vLLM backend. "
-        "Calibrates quantization scales using activation statistics so salient channels are "
-        "preserved at higher precision. autoawq was tested first but awq_ext kernels are not "
-        "compiled for A10G Ampere, causing a silent fallback to ~161ms/token. vLLM's built-in "
-        "AWQ kernels work correctly on A10G and give comparable throughput to GPTQ at INT4."
+        "AWQ (Activation-aware Weight Quantization) INT4 quantization. Unlike GPTQ, AWQ "
+        "identifies salient weight channels by inspecting activation magnitudes during "
+        "calibration, then applies per-channel scaling before quantizing. This typically "
+        "preserves more accuracy at INT4 than GPTQ. Loaded via autoawq; on A10G uses "
+        "fused GEMM kernels. Compare against gptq for the accuracy/throughput trade-off "
+        "at the same bit-width."
+    ),
+    "trtllm": (
+        "TensorRT-LLM (TRTLLM) compiles the model into a TensorRT engine with fused "
+        "attention, INT8/FP8 quantization, and in-flight batching. Build time is "
+        "significant (10-30 min) but inference is among the fastest available on NVIDIA "
+        "GPUs. Requires an engine build step per model/GPU combination; cached across "
+        "runs. Compare peak throughput and TTFT against vllm and continuous-batching "
+        "modes for apples-to-apples production serving cost analysis."
     ),
     "fp8": (
         "FP8 (8-bit floating point) quantization via vLLM's dynamic per-tensor scaling. "
@@ -198,6 +206,20 @@ _MODE_NOTES: dict[str, str] = {
         "and effective batch size distribution. Compare against single-request vllm mode to "
         "quantify the throughput uplift from batching."
     ),
+    "tgi": (
+        "Text Generation Inference (TGI) by HuggingFace — production inference server with "
+        "PagedAttention, continuous batching, and token streaming. TGI is the engine behind "
+        "HuggingFace Inference Endpoints and is widely deployed in enterprise. This mode "
+        "launches TGI inside the Modal container, measures latency, throughput, and TTFT via "
+        "the streaming /generate_stream endpoint, and scores MMLU quality via greedy decode. "
+        "Perplexity is not available (TGI does not expose per-token log-probs on arbitrary "
+        "sequences). Compare against vllm mode to see scheduling and throughput differences."
+    ),
+    "cpu-q2k": (
+        "GGUF Q2_K quantization (≈2.4 bits/weight) via llama.cpp on a CPU-only Modal container. "
+        "Smallest file size (~2.9 GB for 8B) and fastest CPU inference, but meaningful quality "
+        "degradation. Useful for edge-deployment cost analysis and as a lower bound on quality."
+    ),
     "cpu-q4km": (
         "GGUF Q4_K_M quantization (≈4.8 bits/weight) via llama.cpp. The practical sweet spot: "
         "~4.9 GB file, quality close to fp16, throughput ~5-10 tok/s on 8 CPU cores. This is "
@@ -212,14 +234,6 @@ _MODE_NOTES: dict[str, str] = {
         "GGUF Q8_0 quantization (≈8 bits/weight) via llama.cpp — closest to fp16 quality in "
         "GGUF format, ~8.5 GB file. Minimal quality degradation vs fp16 but 2x the file size "
         "of Q4_K_M. Useful as the CPU accuracy ceiling for comparison against GPU fp16 results."
-    ),
-    "sglang": (
-        "SGLang offline engine with RadixAttention (prefix-tree KV cache) and chunked prefill. "
-        "RadixAttention reuses cached KV activations across requests that share a common prefix, "
-        "reducing redundant prefill compute for multi-turn chat and RAG workloads. "
-        "Compare latency/throughput directly against vllm mode — both use PagedAttention-style "
-        "continuous batching, but SGLang's radix cache gives additional gains when prompts share "
-        "a long system prompt or retrieval context."
     ),
 }
 
@@ -263,10 +277,6 @@ _image = (
     )
     # gptqmodel: maintained successor to auto-gptq, no optimum dependency
     .pip_install("gptqmodel>=1.0.0")
-    # AWQ quantization with fused CUDA kernels
-    .pip_install("autoawq>=0.2.5")
-    # NVTX markers for Nsight Systems profiling (no-op when Nsight not attached)
-    .pip_install("nvtx")
     # flash-attn binary has frequent ABI issues; use torch SDPA backend instead (same kernels on A10G)
     .env(
         {
@@ -285,45 +295,26 @@ _image = (
     .pip_install("hf-transfer")
     # vLLM for the "vllm" and "fp8" benchmark modes — installed last to avoid CUDA conflicts
     .pip_install("vllm>=0.6.0")
-    # Bundle the local package so flops.py, mmlu.py, etc. are importable in the container
-    .add_local_python_source("llm_inference_benchmarking")
 )
 
 # CPU-only image: llama-cpp-python (pre-built wheel) + huggingface_hub for GGUF download
-_cpu_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .run_commands(
-        # --prefer-binary downloads a pre-built wheel for llama-cpp-python (no C++ compilation).
-        # The wheel enables AVX2/AVX-512 VNNI kernels on modern x86 CPU containers.
-        "pip install 'llama-cpp-python>=0.3.0' --prefer-binary",
-        "pip install 'huggingface_hub>=0.23.0'",
-    )
-    .add_local_python_source("llm_inference_benchmarking")
+_cpu_image = modal.Image.debian_slim(python_version="3.11").run_commands(
+    # --prefer-binary downloads a pre-built wheel for llama-cpp-python (no C++ compilation).
+    # The wheel enables AVX2/AVX-512 VNNI kernels on modern x86 CPU containers.
+    "pip install 'llama-cpp-python>=0.3.0' --prefer-binary",
+    "pip install 'huggingface_hub>=0.23.0'",
 )
 
-# SGLang image — uses CUDA 12.4 base to match the flashinfer wheel index and avoid
-# sgl_kernel picking SM100 (Blackwell) kernels when the Modal driver reports CUDA 13.x.
-# Pin sglang to 0.4.x: these versions ship SM86 (A10G Ampere) kernels in sgl_kernel.
-_sglang_image = (
+# TGI image: pulls the official HuggingFace Text Generation Inference Docker image
+_tgi_image = (
     modal.Image.from_registry(
-        "nvidia/cuda:12.4.1-devel-ubuntu22.04",
+        "ghcr.io/huggingface/text-generation-inference:2.4.0",
         add_python="3.11",
     )
-    .apt_install("libnuma-dev")
-    .pip_install("wheel", "setuptools", "packaging")
-    .pip_install("torch==2.5.1", "numpy<2.0")
-    .pip_install(
-        "sglang[all]>=0.4.0,<0.5.0",
-        extra_index_url="https://flashinfer.ai/whl/cu124/torch2.5/",
-    )
-    .pip_install(
-        "transformers>=4.44.0",
-        "huggingface_hub",
-        "hf-transfer",
-        "nvtx",
-    )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
-    .add_local_python_source("llm_inference_benchmarking")
+    # Clear the TGI image's baked-in ENTRYPOINT so Modal can exec Python directly.
+    # Without this, Modal's `python -c "..."` becomes `text-generation-launcher python -c "..."`.
+    .dockerfile_commands(["ENTRYPOINT []", "CMD []"])
+    .pip_install("httpx>=0.27.0", "huggingface_hub>=0.23.0")
 )
 
 # Persistent volume for caching downloaded model weights
@@ -339,7 +330,7 @@ app = modal.App("llm-quant-benchmark")
 
 
 @app.function(
-    gpu=os.environ.get("MODAL_GPU", "A10G"),
+    gpu="A10G",
     image=_image,
     timeout=7200,
     volumes={"/model-cache": _model_cache},
@@ -373,8 +364,6 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
         return _run_vllm_benchmark(gpu_name, hf_token, model_id=model_id, quantization="fp8")
     if quant_mode == "continuous-batching":
         return _run_continuous_batching_benchmark(gpu_name, hf_token, model_id=model_id)
-    if quant_mode == "awq":
-        return _run_vllm_benchmark(gpu_name, hf_token, model_id=_DEFAULT_AWQ_MODEL, quantization="awq")
 
     model_id, bnb_config, load_kwargs = _resolve_load_config(quant_mode, hf_token, model_id)
 
@@ -388,7 +377,7 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
         tokenizer.pad_token = tokenizer.eos_token
 
     torch.cuda.reset_peak_memory_stats()
-    if quant_mode in ("gptq", "gptq-triton"):
+    if quant_mode == "gptq":
         import gptqmodel.quantization.config as _gptq_cfg
         from gptqmodel import GPTQModel
 
@@ -403,18 +392,12 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
             return _orig_fqc(cls, config_dict, fmt)
 
         _gptq_cfg.QuantizeConfig.from_quant_config = _patched_fqc
-        # gptq-triton: force Triton kernel backend instead of exllama2/Marlin CUDA kernels.
-        # backend="triton" instructs gptqmodel to use Triton-generated CUDA kernels for the
-        # quantized matmul ops, bypassing the hand-tuned exllama2 kernels. This lets us
-        # measure the perf gap between compiler-generated (Triton) and hand-tuned (Marlin) kernels.
-        gptq_kwargs: dict[str, Any] = {
-            "cache_dir": "/model-cache/hf",
-            "device": "cuda:0",
+        model = GPTQModel.from_quantized(
+            model_id,
+            cache_dir="/model-cache/hf",
+            device="cuda:0",
             **load_kw,
-        }
-        if quant_mode == "gptq-triton":
-            gptq_kwargs["backend"] = "triton"
-        model = GPTQModel.from_quantized(model_id, **gptq_kwargs)
+        )
         model.eval()
     else:
         pretrained_kwargs: dict[str, Any] = {
@@ -459,10 +442,10 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
         print(f"[{quant_mode}] Loading draft model {DRAFT_MODEL} …")
         draft_model = AutoModelForCausalLM.from_pretrained(
             DRAFT_MODEL,
-            revision=_MODEL_REVISION,
             cache_dir="/model-cache/hf",
             device_map="auto",
             dtype=torch.float16,
+            revision="main",
             **load_kw,
         )
         draft_model.eval()
@@ -502,64 +485,6 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # vLLM benchmark path
 # ---------------------------------------------------------------------------
-# AWQ benchmark helper
-# ---------------------------------------------------------------------------
-
-
-def _run_awq_benchmark(gpu_name: str, hf_token: str | None, model_id: str = "") -> dict[str, Any]:
-    """Benchmark AWQ INT4 via autoawq with fused CUDA kernels."""
-    import torch
-    from awq import AutoAWQForCausalLM
-    from transformers import AutoTokenizer
-
-    awq_model_id = os.getenv("QUANT_AWQ_MODEL", _DEFAULT_AWQ_MODEL)
-    load_kw = {"token": hf_token} if hf_token else {}
-
-    print(f"[awq] Loading {awq_model_id} …")
-    t_load_start = time.perf_counter()
-    torch.cuda.reset_peak_memory_stats()
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        awq_model_id, revision=_MODEL_REVISION, cache_dir="/model-cache/hf", **load_kw
-    )
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    model = AutoAWQForCausalLM.from_quantized(
-        awq_model_id,
-        revision=_MODEL_REVISION,
-        cache_dir="/model-cache/hf",
-        fuse_layers=False,  # fused kernels (awq_ext) not compiled for A10G Ampere; unfused path used
-        **load_kw,
-    )
-    model.eval()
-    load_time_s = round(time.perf_counter() - t_load_start, 2)
-    model_vram_mb = round(torch.cuda.max_memory_allocated() / 1024**2, 1)
-
-    device = "cuda:0"
-    latency = _measure_latency(model, tokenizer, device)
-    throughput = _measure_throughput(model, tokenizer, device)
-    batch_throughput = _measure_batch_throughput(model, tokenizer, device)
-    quality = _measure_quality(model, tokenizer, device)
-
-    result: dict[str, Any] = {
-        "quant_mode": "awq",
-        "model_id": awq_model_id,
-        "gpu": gpu_name,
-        "load_time_s": load_time_s,
-        "memory": {"model_weights_mb": model_vram_mb, "reserved_mb": round(torch.cuda.memory_reserved() / 1024**2, 1)},
-        "latency": latency,
-        "throughput": throughput,
-        "batch_throughput": batch_throughput,
-        "perplexity": None,
-        "quality": quality,
-        "notes": _MODE_NOTES["awq"],
-    }
-    _model_cache.commit()
-    return build_flops_funnel(result, _LLAMA_8B_CONFIG, gpu_name, "awq")
-
-
-# ---------------------------------------------------------------------------
 
 
 def _run_vllm_benchmark(
@@ -575,15 +500,14 @@ def _run_vllm_benchmark(
         quantization: Optional vLLM quantization scheme, e.g. "fp8" for dynamic FP8.
                       On A10G (Ampere), fp8 runs in software emulation; H100 uses hardware.
     """
-    os.environ["TRANSFORMERS_CACHE"] = "/model-cache/hf"
-    os.environ["HF_HOME"] = "/model-cache/hf"
-    # Must be set before vllm import — checked at import time, not engine creation
-    os.environ["VLLM_USE_V1"] = "0"
-    # deep_gemm not installed in image; skip its warmup pass for fp8
-    os.environ["VLLM_USE_DEEP_GEMM"] = "0"
-
     import torch
     from vllm import LLM, SamplingParams
+
+    os.environ["TRANSFORMERS_CACHE"] = "/model-cache/hf"
+    os.environ["HF_HOME"] = "/model-cache/hf"
+    # vLLM >=0.6 defaults to the v1 engine which spawns subprocess workers;
+    # those fail in Modal containers due to IPC/shared-memory restrictions
+    os.environ["VLLM_USE_V1"] = "0"
 
     effective_model = model_id or BASE_MODEL
     quant_mode_label = quantization if quantization else "vllm"
@@ -674,7 +598,7 @@ def _run_vllm_benchmark(
         if quantization == "fp8"
         else ""
     )
-    result = {
+    return {
         "quant_mode": quant_mode_label,
         "model_id": effective_model,
         "gpu": gpu_name,
@@ -694,7 +618,7 @@ def _run_vllm_benchmark(
             "ttft_mean_ms": round(ttft_mean, 1) if ttft_mean is not None else None,
             "ttft_p95_ms": None,
             "prefill_ms": round(ttft_mean, 1) if ttft_mean is not None else None,
-            "decode_ms_per_tok": round(max(lat_mean - ttft_mean, 0) / max(256 - 1, 1), 2)
+            "decode_ms_per_token": round(max(lat_mean - ttft_mean, 0) / max(256 - 1, 1), 2)
             if ttft_mean is not None
             else None,
             "prefill_decode_ratio": round(ttft_mean / max(max(lat_mean - ttft_mean, 0) / max(256 - 1, 1), 0.01), 2)
@@ -717,7 +641,66 @@ def _run_vllm_benchmark(
             )
         ),
     }
-    return build_flops_funnel(result, _LLAMA_8B_CONFIG, gpu_name, quant_mode_label)
+
+
+def _measure_quality_vllm(llm: Any) -> dict[str, Any]:
+    """MMLU log-prob scoring via vLLM's generate with logprobs."""
+    from vllm import SamplingParams
+
+    correct = 0
+    details: list[dict] = []
+    evaluated = _MMLU_SUBSET[:50]
+    subject_stats: dict[str, dict[str, int]] = {}
+
+    # Request logprobs for the first generated token — used to score each choice
+    # logprobs=20 ensures A/B/C/D tokens are included even when not in model's top-5
+    score_params = SamplingParams(max_tokens=1, temperature=0.0, logprobs=20)
+
+    for q_idx, mmlu_entry in enumerate(evaluated):
+        question, choices, answer_letter = mmlu_entry[0], mmlu_entry[1], mmlu_entry[2]
+        subject = _question_subject(q_idx)
+        choice_labels = [chr(ord("A") + i) for i in range(len(choices))]
+        prompt = f"Question: {question}\nA) {choices[0]}\nB) {choices[1]}\nC) {choices[2]}\nD) {choices[3]}\nAnswer:"
+        out = llm.generate([prompt], score_params, use_tqdm=False)[0]
+        predicted_label = "A"
+        if out.outputs and out.outputs[0].logprobs:
+            first_token_logprobs = out.outputs[0].logprobs[0]
+            best_lp = -1e9
+            for v in first_token_logprobs.values():
+                tok = v.decoded_token.strip()
+                if tok in choice_labels and v.logprob > best_lp:
+                    best_lp = v.logprob
+                    predicted_label = tok
+
+        is_correct = predicted_label == answer_letter
+        if is_correct:
+            correct += 1
+        s = subject_stats.setdefault(subject, {"correct": 0, "total": 0})
+        s["total"] += 1
+        if is_correct:
+            s["correct"] += 1
+        details.append(
+            {
+                "question": question[:60] + "…" if len(question) > 60 else question,
+                "predicted": predicted_label,
+                "expected": answer_letter,
+                "correct": is_correct,
+                "subject": subject,
+            }
+        )
+
+    accuracy = correct / len(evaluated)
+    by_subject = {
+        subj: {"accuracy": round(v["correct"] / v["total"], 4), "correct": v["correct"], "total": v["total"]}
+        for subj, v in subject_stats.items()
+    }
+    return {
+        "mmlu_accuracy": round(accuracy, 4),
+        "correct": correct,
+        "total": len(evaluated),
+        "mmlu_by_subject": by_subject,
+        "details": details,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -740,14 +723,12 @@ def _run_continuous_batching_benchmark(
     """
     import asyncio
 
-    os.environ["TRANSFORMERS_CACHE"] = "/model-cache/hf"
-    os.environ["HF_HOME"] = "/model-cache/hf"
-    # Must be set before vllm import — vLLM V1 engine spawns subprocess workers
-    # that fail in Modal containers and pre-allocates CUDA graphs (~2 GB overhead)
-    os.environ["VLLM_USE_V1"] = "0"
-
     import torch
     from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
+
+    os.environ["TRANSFORMERS_CACHE"] = "/model-cache/hf"
+    os.environ["HF_HOME"] = "/model-cache/hf"
+    os.environ["VLLM_USE_V1"] = "0"
 
     effective_model = model_id or BASE_MODEL
     print(f"[continuous-batching] Loading {effective_model} via AsyncLLMEngine …")
@@ -757,14 +738,10 @@ def _run_continuous_batching_benchmark(
         revision=_MODEL_REVISION,
         dtype="float16",
         gpu_memory_utilization=0.85,
-        max_model_len=2048,  # reduced from 4096 — saves KV cache VRAM on A10G
-        enforce_eager=True,  # skip CUDA graph pre-allocation (~2 GB savings)
+        max_model_len=4096,
         download_dir="/model-cache/hf",
     )
-    try:
-        engine = AsyncLLMEngine.from_engine_args(engine_args)
-    except (ValueError, RuntimeError) as exc:
-        return {"quant_mode": "continuous-batching", "error": str(exc), "skipped": True}
+    engine = AsyncLLMEngine.from_engine_args(engine_args)
     _model_cache.commit()
 
     sampling = SamplingParams(max_tokens=256, temperature=0.0)
@@ -884,9 +861,9 @@ def _resolve_load_config(quant_mode: str, hf_token: str | None, model_id: str = 
     if quant_mode == "spec-dec":
         return base, None, {"dtype": torch.float16}
 
-    if quant_mode in ("gptq", "gptq-triton"):
-        # Pre-quantized INT4 GPTQ checkpoint; gptqmodel registers the backend at load time.
-        # gptq-triton uses the same checkpoint but with backend="triton" applied in run_quant_benchmark.
+    if quant_mode == "gptq":
+        # Pre-quantized INT4 GPTQ checkpoint; auto-gptq registers as a transformers backend.
+        # For cross-model runs, caller must set QUANT_GPTQ_MODEL to a matching GPTQ checkpoint.
         gptq_id = os.environ.get("QUANT_GPTQ_MODEL", _DEFAULT_GPTQ_MODEL)
         return gptq_id, None, {}
 
@@ -915,19 +892,6 @@ def _measure_latency(model: Any, tokenizer: Any, device: str, assistant_model: A
     """Latency over _BENCH_PROMPTS x 5 iterations, plus TTFT."""
     import torch
 
-    try:
-        import nvtx as _nvtx
-    except ImportError:
-        _nvtx = None  # type: ignore[assignment]
-
-    def _nvtx_range(name: str, color: str = "blue"):
-        """Context manager that wraps nvtx.annotate when available, else no-op."""
-        import contextlib
-
-        if _nvtx is not None:
-            return _nvtx.annotate(name, color=color)
-        return contextlib.nullcontext()
-
     WARMUP = 1
     ITERS = 3
     MAX_NEW_TOKENS = 256
@@ -947,28 +911,25 @@ def _measure_latency(model: Any, tokenizer: Any, device: str, assistant_model: A
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
         # Warmup
-        with _nvtx_range("warmup", color="gray"):
-            for _ in range(WARMUP):
-                with torch.no_grad():
-                    model.generate(**inputs, **gen_kw)
+        for _ in range(WARMUP):
+            with torch.no_grad():
+                model.generate(**inputs, **gen_kw)
 
         # TTFT: generate exactly 1 token (≈ prefill + one decode step)
         ttft_kw = {**gen_kw, "max_new_tokens": 1}
         ttft_kw.pop("assistant_model", None)  # spec-dec TTFT measured without draft for fair comparison
-        with _nvtx_range("ttft", color="green"):
-            for _ in range(3):
-                t0 = time.perf_counter()
-                with torch.no_grad():
-                    model.generate(**inputs, **ttft_kw)
-                ttft_ms_list.append((time.perf_counter() - t0) * 1000)
+        for _ in range(3):
+            t0 = time.perf_counter()
+            with torch.no_grad():
+                model.generate(**inputs, **ttft_kw)
+            ttft_ms_list.append((time.perf_counter() - t0) * 1000)
 
         # Full-generation latency
-        with _nvtx_range("latency", color="blue"):
-            for _ in range(ITERS):
-                t0 = time.perf_counter()
-                with torch.no_grad():
-                    model.generate(**inputs, **gen_kw)
-                all_ms.append((time.perf_counter() - t0) * 1000)
+        for _ in range(ITERS):
+            t0 = time.perf_counter()
+            with torch.no_grad():
+                model.generate(**inputs, **gen_kw)
+            all_ms.append((time.perf_counter() - t0) * 1000)
 
     all_ms.sort()
     ttft_ms_list.sort()
@@ -989,7 +950,7 @@ def _measure_latency(model: Any, tokenizer: Any, device: str, assistant_model: A
         "ttft_mean_ms": ttft_mean,
         "ttft_p95_ms": round(sorted(ttft_ms_list)[int(len(ttft_ms_list) * 0.95)], 1),
         "prefill_ms": ttft_mean,
-        "decode_ms_per_tok": decode_ms_per_tok,
+        "decode_ms_per_token": decode_ms_per_tok,
         "prefill_decode_ratio": prefill_decode_ratio,
     }
 
@@ -1011,31 +972,18 @@ def _measure_throughput(model: Any, tokenizer: Any, device: str, assistant_model
     if assistant_model is not None:
         gen_kw["assistant_model"] = assistant_model
 
-    try:
-        import nvtx as _nvtx_tput
-
-        def _tput_range(name: str, color: str = "green"):
-            return _nvtx_tput.annotate(name, color=color)
-
-    except ImportError:
-        import contextlib
-
-        def _tput_range(name: str, color: str = "green"):  # type: ignore[misc]
-            return contextlib.nullcontext()
-
     for prompt in _BENCH_PROMPTS[:3]:
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
         input_len = inputs["input_ids"].shape[1]
 
-        with _tput_range("throughput", color="orange"):
-            for _ in range(ITERS):
-                t0 = time.perf_counter()
-                with torch.no_grad():
-                    out = model.generate(**inputs, **gen_kw)
-                elapsed = time.perf_counter() - t0
-                output_len = out.shape[1] - input_len
-                out_tps_list.append(output_len / elapsed)
-                total_tps_list.append(out.shape[1] / elapsed)
+        for _ in range(ITERS):
+            t0 = time.perf_counter()
+            with torch.no_grad():
+                out = model.generate(**inputs, **gen_kw)
+            elapsed = time.perf_counter() - t0
+            output_len = out.shape[1] - input_len
+            out_tps_list.append(output_len / elapsed)
+            total_tps_list.append(out.shape[1] / elapsed)
 
     return {
         "output_tokens_per_sec": round(statistics.mean(out_tps_list), 1),
@@ -1094,7 +1042,7 @@ def _measure_perplexity(model: Any, tokenizer: Any, device: str) -> dict[str, fl
     STRIDE = 128
     MAX_LEN = 1024  # tokens to evaluate (keep it fast)
 
-    dataset = load_dataset("wikitext", revision=_MODEL_REVISION, name="wikitext-2-raw-v1", split="test")
+    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
     text = "\n\n".join(dataset["text"])  # type: ignore[index]
     encodings = tokenizer(text, return_tensors="pt")
     seq_len = min(encodings.input_ids.size(1), MAX_LEN)
@@ -1122,17 +1070,18 @@ def _measure_perplexity(model: Any, tokenizer: Any, device: str) -> dict[str, fl
 
 
 def _measure_quality(model: Any, tokenizer: Any, device: str) -> dict[str, Any]:
-    """MMLU accuracy: zero-shot multiple-choice via log-prob scoring (200 questions)."""
+    """MMLU subset accuracy: zero-shot multiple-choice via log-prob scoring."""
     import torch
 
     correct = 0
     details: list[dict] = []
-    questions = _load_mmlu_questions()
+    evaluated = _MMLU_SUBSET[:50]
     subject_stats: dict[str, dict[str, int]] = {}
 
-    for entry in questions:
-        question, choices, answer_idx = entry["question"], entry["choices"], entry["answer_idx"]
-        subject = entry["subject"]
+    for q_idx, mmlu_entry in enumerate(evaluated):
+        question, choices, answer_letter = mmlu_entry[0], mmlu_entry[1], mmlu_entry[2]
+        subject = _question_subject(q_idx)
+        answer_idx = ord(answer_letter) - ord("A")
         log_probs: list[float] = []
 
         for choice in choices:
@@ -1144,7 +1093,6 @@ def _measure_quality(model: Any, tokenizer: Any, device: str) -> dict[str, Any]:
 
         predicted_idx = int(max(range(len(log_probs)), key=lambda i: log_probs[i]))
         predicted_letter = chr(ord("A") + predicted_idx)
-        answer_letter = chr(ord("A") + answer_idx)
         is_correct = predicted_idx == answer_idx
         if is_correct:
             correct += 1
@@ -1162,7 +1110,7 @@ def _measure_quality(model: Any, tokenizer: Any, device: str) -> dict[str, Any]:
             }
         )
 
-    accuracy = correct / len(questions)
+    accuracy = correct / len(evaluated)
     by_subject = {
         subj: {"accuracy": round(v["correct"] / v["total"], 4), "correct": v["correct"], "total": v["total"]}
         for subj, v in subject_stats.items()
@@ -1170,7 +1118,7 @@ def _measure_quality(model: Any, tokenizer: Any, device: str) -> dict[str, Any]:
     return {
         "mmlu_accuracy": round(accuracy, 4),
         "correct": correct,
-        "total": len(questions),
+        "total": len(evaluated),
         "mmlu_by_subject": by_subject,
         "details": details,
     }
@@ -1302,7 +1250,7 @@ def run_tp_benchmark(model_id: str = "") -> dict[str, Any]:
 
     quality = _measure_quality_vllm(llm)
 
-    tp_result = {
+    return {
         "quant_mode": "tensor-parallel",
         "model_id": effective_model,
         "gpu": f"{gpu_count}x {gpu_name}",
@@ -1321,7 +1269,7 @@ def run_tp_benchmark(model_id: str = "") -> dict[str, Any]:
             "p99_ms": round(latencies_ms[int(n * 0.99)], 1),
             "ttft_mean_ms": round(sum(ttfts_ms) / len(ttfts_ms), 1) if ttfts_ms else None,
             "prefill_ms": round(sum(ttfts_ms) / len(ttfts_ms), 1) if ttfts_ms else None,
-            "decode_ms_per_tok": round(
+            "decode_ms_per_token": round(
                 max(sum(latencies_ms) / n - sum(ttfts_ms) / len(ttfts_ms), 0) / max(256 - 1, 1), 2
             )
             if ttfts_ms
@@ -1337,7 +1285,6 @@ def run_tp_benchmark(model_id: str = "") -> dict[str, Any]:
         "quality": quality,
         "notes": _MODE_NOTES["tensor-parallel"],
     }
-    return build_flops_funnel(tp_result, _LLAMA_8B_CONFIG, gpu_name, "tensor-parallel")
 
 
 # ---------------------------------------------------------------------------
@@ -1371,7 +1318,7 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
 
     _ITERS = 3
     _MAX_NEW_TOKENS = 64
-    _CPU_MMLU_N = 20  # keep CPU runtime under ~30 min total
+    _MMLU_N = 20  # 20-question subset keeps CPU runtime under ~30 min total
 
     results: list[dict[str, Any]] = []
 
@@ -1380,7 +1327,6 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
         print(f"[{mode_name}] Downloading {gguf_repo}/{filename} …")
         t_load = time.perf_counter()
         gguf_path = hf_hub_download(
-            revision=_MODEL_REVISION,
             repo_id=gguf_repo,
             filename=filename,
             cache_dir=cache_dir,
@@ -1411,10 +1357,10 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
         total_tps = sum(output_tokens_list) / (sum(latencies_ms) / 1000)
 
         # --- MMLU quality (log-prob scoring via llama_cpp eval) ---
-        cpu_questions = _load_mmlu_questions(n=_CPU_MMLU_N)
+        evaluated = _MMLU_SUBSET[:_MMLU_N]
         correct = 0
-        for entry in cpu_questions:
-            question, choices, answer_idx = entry["question"], entry["choices"], entry["answer_idx"]
+        for mmlu_entry in evaluated:
+            question, choices, answer_letter = mmlu_entry[0], mmlu_entry[1], mmlu_entry[2]
             choice_str = "\n".join(f"{chr(65 + i)}. {c}" for i, c in enumerate(choices))
             q_prompt = f"Question: {question}\n{choice_str}\nAnswer:"
             # Feed prompt tokens into the KV cache, read logits for next token
@@ -1425,10 +1371,10 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
             # Resolve token IDs for " A", " B", " C", " D"
             letter_ids = [llm.tokenize(f" {chr(65 + i)}".encode(), add_bos=False)[0] for i in range(len(choices))]
             predicted_idx = int(np.argmax([logits[tid] for tid in letter_ids]))
-            if predicted_idx == answer_idx:
+            if chr(65 + predicted_idx) == answer_letter:
                 correct += 1
 
-        mmlu_acc = round(correct / len(cpu_questions), 4)
+        mmlu_acc = round(correct / len(evaluated), 4)
 
         results.append(
             {
@@ -1447,7 +1393,7 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
                     "p99_ms": round(latencies_ms[min(int(n * 0.99), n - 1)], 1),
                     "ttft_mean_ms": None,
                     "prefill_ms": None,
-                    "decode_ms_per_tok": None,
+                    "decode_ms_per_token": None,  # nosec B105 — not a password; bandit false positive on key name
                 },
                 "throughput": {
                     "output_tokens_per_sec": round(total_tps, 1),
@@ -1458,7 +1404,7 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
                 "quality": {
                     "mmlu_accuracy": mmlu_acc,
                     "correct": correct,
-                    "total": len(cpu_questions),
+                    "total": len(evaluated),
                     "note": f"20-question subset (CPU runtime constraint); {quant_level} GGUF",
                 },
                 "notes": _MODE_NOTES[mode_name],
@@ -1471,161 +1417,249 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# SGLang benchmark
+# TGI (Text Generation Inference) benchmark
 # ---------------------------------------------------------------------------
 
 
 @app.function(
-    gpu=os.environ.get("MODAL_GPU", "A10G"),
-    image=_sglang_image,
-    timeout=3600,
+    gpu="A10G",
+    image=_tgi_image,
+    timeout=1800,
     volumes={"/model-cache": _model_cache},
     secrets=_modal_secrets,
     memory=32768,
 )
-def run_sglang_benchmark(model_id: str = "") -> dict[str, Any]:
-    """Benchmark via SGLang's offline engine (RadixAttention, chunked prefill).
+def run_tgi_benchmark(model_id: str = "") -> dict[str, Any]:
+    """Benchmark HuggingFace TGI inference server on a Modal A10G GPU.
 
-    Uses sgl.Engine — the synchronous offline API analogous to vLLM's LLM class.
-    Measures the same metrics as the vllm mode so results are directly comparable:
-    latency, throughput, batch throughput, and zero-shot MMLU accuracy.
-
-    Key difference from vllm: RadixAttention reuses KV cache entries across requests
-    that share a common prefix (e.g. system prompt, RAG context). On diverse prompts
-    with no shared prefix the throughput should be similar; the gap widens as prefix
-    sharing increases.
+    Starts the TGI server as a subprocess, waits for /health, then measures
+    latency, throughput, TTFT (via streaming), and MMLU quality (greedy decode).
+    Perplexity is not available — TGI does not expose per-token log-probs on
+    arbitrary sequences. Batch throughput is measured via concurrent requests.
     """
-    import asyncio
+    import subprocess  # nosec B404 — subprocess is required to launch the TGI server process
 
-    import torch
+    import httpx
 
-    os.environ["TRANSFORMERS_CACHE"] = "/model-cache/hf"
-    os.environ["HF_HOME"] = "/model-cache/hf"
+    mid = model_id or BASE_MODEL
+    port = 8080
+    base_url = f"http://localhost:{port}"
 
-    import sglang as sgl
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN", "")
+    # TGI 2.x reads HUGGINGFACE_HUB_CACHE (not HF_HUB_CACHE) for its local weight cache
+    env = {
+        **os.environ,
+        "HUGGING_FACE_HUB_TOKEN": hf_token,
+        "HUGGINGFACE_HUB_CACHE": "/model-cache/tgi",
+        "HF_HUB_CACHE": "/model-cache/tgi",
+        "HF_HOME": "/model-cache/tgi",
+    }
 
-    effective_model = model_id or BASE_MODEL
-    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
-
-    print(f"[sglang] Loading {effective_model} …")
-    t_load_start = time.perf_counter()
-    torch.cuda.reset_peak_memory_stats()
-
-    engine = sgl.Engine(
-        model_path=effective_model,
-        dtype="float16",
-        mem_fraction_static=0.85,
-        download_dir="/model-cache/hf",
+    # Pre-download model weights into the cache so the shard can load offline
+    print(f"[tgi] Downloading weights for {mid} …")
+    dl_result = subprocess.run(  # nosec B603 B607 — fixed CLI args, no user input interpolated
+        ["text-generation-server", "download-weights", mid],
+        env=env,
+        capture_output=False,
+        text=True,
     )
-    load_time_s = time.perf_counter() - t_load_start
-    model_vram_mb = torch.cuda.max_memory_allocated() / 1024**2
-    reserved_mb = torch.cuda.memory_reserved() / 1024**2
-    print(f"[sglang] Engine ready in {load_time_s:.1f}s  ({model_vram_mb:.0f} MB VRAM)")
+    if dl_result.returncode != 0:
+        raise RuntimeError(f"text-generation-server download-weights failed (exit {dl_result.returncode})")
 
-    # Engine init spawns background processes that clear the main thread's event loop.
-    # Re-set it here so engine.generate() (which calls asyncio.get_event_loop()) works.
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    _model_cache.commit()
+    cmd = [
+        "text-generation-launcher",
+        "--model-id",
+        mid,
+        "--port",
+        str(port),
+        # TGI 2.x flag names (3.x renamed these; we pin image to 2.4.0 for stability)
+        "--max-input-length",
+        "512",
+        "--max-total-tokens",
+        "768",
+        "--max-batch-prefill-tokens",
+        "512",
+        "--dtype",
+        "float16",
+        "--num-shard",
+        "1",
+        # Avoids flash-attn kernel build failures; falls back to PyTorch SDPA
+        "--disable-custom-kernels",
+    ]
+    print(f"[tgi] cmd: {' '.join(cmd)}")
+    print(f"[tgi] Starting TGI server for {mid} …")
+    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)  # nosec B603
 
-    def _gen(prompts: list[str], max_tokens: int) -> list[dict]:
-        return engine.generate(prompts, sampling_params={"max_new_tokens": max_tokens, "temperature": 0.0})
+    # Collect log lines so we can include them in the error message
+    import threading
 
-    def _completion_tokens(out: dict, fallback: int) -> int:
-        return (out.get("meta_info") or {}).get("completion_tokens") or fallback
+    log_lines: list[str] = []
+
+    def _drain(pipe: Any) -> None:
+        for raw in pipe:
+            line = raw.decode(errors="replace").rstrip()
+            log_lines.append(line)
+            print("[tgi-server]", line, flush=True)
+
+    drain_thread = threading.Thread(target=_drain, args=(proc.stdout,), daemon=False)
+    drain_thread.start()
+
+    ready = False
+    with httpx.Client(timeout=10.0) as hc:
+        for _ in range(60):
+            time.sleep(5)
+            # Fast-fail if TGI process already died
+            rc = proc.poll()
+            if rc is not None:
+                drain_thread.join(timeout=5)
+                tail = "\n".join(log_lines[-30:])
+                raise RuntimeError(f"TGI process exited with code {rc} before becoming ready.\n{tail}")
+            try:
+                r = hc.get(f"{base_url}/health")
+                if r.status_code == 200:
+                    ready = True
+                    break
+            except Exception:  # nosec B110 — health-check poll; server not ready yet is expected
+                pass
+    if not ready:
+        proc.kill()
+        drain_thread.join(timeout=5)
+        tail = "\n".join(log_lines[-30:])
+        raise RuntimeError(f"TGI server did not become ready within 300 s.\n{tail}")
+    print("[tgi] Server ready.")
+
+    _ITERS = 5
+    _MAX_NEW_TOKENS = 256
+    _BATCH_SIZES = [1, 4, 8]
+
+    def _generate(prompt: str, max_tokens: int = _MAX_NEW_TOKENS) -> tuple[str, int]:
+        """POST /generate and return (generated_text, token_count)."""
+        with httpx.Client(timeout=120.0) as hc:
+            r = hc.post(
+                f"{base_url}/generate",
+                json={"inputs": prompt, "parameters": {"max_new_tokens": max_tokens, "do_sample": False}},
+            )
+            r.raise_for_status()
+            body = r.json()
+            text = body.get("generated_text", "")
+            token_count = body.get("details", {}).get("generated_tokens", len(text.split()))
+            return text, token_count
+
+    def _ttft(prompt: str) -> float:
+        """Time-to-first-token via /generate_stream (SSE)."""
+        t0 = time.perf_counter()
+        with httpx.Client(timeout=120.0) as hc:
+            with hc.stream(
+                "POST",
+                f"{base_url}/generate_stream",
+                json={"inputs": prompt, "parameters": {"max_new_tokens": _MAX_NEW_TOKENS, "do_sample": False}},
+            ) as resp:
+                for _ in resp.iter_lines():
+                    return (time.perf_counter() - t0) * 1000
+        return (time.perf_counter() - t0) * 1000
 
     # Warmup
-    _gen([_BENCH_PROMPTS[0]], 32)
+    _generate(_BENCH_PROMPTS[0], max_tokens=32)
 
-    # Latency (single request, 256 output tokens)
-    _ITERS = 3
-    _MAX_NEW_TOKENS = 256
+    # Latency
     latencies_ms: list[float] = []
-    for prompt in _BENCH_PROMPTS * _ITERS:
+    output_tokens_list: list[int] = []
+    for prompt in (_BENCH_PROMPTS * _ITERS)[:_ITERS]:
         t0 = time.perf_counter()
-        _gen([prompt], _MAX_NEW_TOKENS)
+        _, ntok = _generate(prompt)
         latencies_ms.append((time.perf_counter() - t0) * 1000)
+        output_tokens_list.append(ntok)
 
     latencies_ms.sort()
     n = len(latencies_ms)
-    lat_mean = sum(latencies_ms) / n
+    total_tps = sum(output_tokens_list) / (sum(latencies_ms) / 1000)
 
-    # Throughput (512 output tokens, 2 iterations)
-    thr_times: list[float] = []
-    thr_tokens: list[int] = []
-    for _ in range(2):
-        t0 = time.perf_counter()
-        outs = _gen([_BENCH_PROMPTS[0]], 512)
-        thr_times.append(time.perf_counter() - t0)
-        thr_tokens.append(_completion_tokens(outs[0], 512))
-    output_tps = sum(thr_tokens) / sum(thr_times)
+    # TTFT
+    ttft_samples = [_ttft(p) for p in _BENCH_PROMPTS[:3]]
+    ttft_mean = round(sum(ttft_samples) / len(ttft_samples), 1)
 
     # Batch throughput
-    batch_thr: dict[str, float] = {}
-    for bs in (1, 4, 8):
-        prompts = (_BENCH_PROMPTS * bs)[:bs]
-        t0 = time.perf_counter()
-        outs = _gen(prompts, 512)
-        elapsed = time.perf_counter() - t0
-        total_tok = sum(_completion_tokens(o, 512) for o in outs)
-        batch_thr[f"batch{bs}_output_tokens_per_sec"] = round(total_tok / elapsed, 1)
+    import asyncio
 
-    # MMLU: greedy decode, extract first alphabetic character
-    mmlu_q = _load_mmlu_questions()
+    async def _batch_tps(batch_size: int) -> float:
+        async with httpx.AsyncClient(timeout=120.0) as hc:
+            t0 = time.perf_counter()
+            tasks = [
+                hc.post(
+                    f"{base_url}/generate",
+                    json={
+                        "inputs": _BENCH_PROMPTS[i % len(_BENCH_PROMPTS)],
+                        "parameters": {"max_new_tokens": _MAX_NEW_TOKENS, "do_sample": False},
+                    },
+                )
+                for i in range(batch_size)
+            ]
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+        elapsed = time.perf_counter() - t0
+        total_tok = sum(
+            r.json().get("details", {}).get("generated_tokens", 0)
+            for r in responses
+            if isinstance(r, httpx.Response) and r.status_code == 200
+        )
+        return round(total_tok / elapsed, 1) if elapsed > 0 else 0.0
+
+    batch_throughput: dict[str, Any] = {}
+    for bs in _BATCH_SIZES:
+        tps = asyncio.run(_batch_tps(bs))
+        batch_throughput[f"batch_{bs}"] = {"output_tokens_per_sec": tps, "batch_size": bs}
+
+    # MMLU quality (greedy decode, 50-question subset)
+    evaluated = _MMLU_SUBSET[:50]
     correct = 0
-    for entry in mmlu_q:
-        choice_str = "\n".join(f"{chr(65 + i)}. {c}" for i, c in enumerate(entry["choices"]))
-        prompt = f"Question: {entry['question']}\n{choice_str}\nAnswer:"
-        out = _gen([prompt], 4)
-        text = (out[0].get("text") or "") if isinstance(out[0], dict) else ""
-        predicted = next((c for c in text.strip() if c.isalpha()), "")[:1].upper()
-        if predicted == chr(ord("A") + entry["answer_idx"]):
+    for mmlu_entry in evaluated:
+        question, choices, answer_letter = mmlu_entry[0], mmlu_entry[1], mmlu_entry[2]
+        choice_str = "\n".join(f"{chr(65 + i)}. {c}" for i, c in enumerate(choices))
+        q_prompt = f"Question: {question}\n{choice_str}\nAnswer:"
+        text, _ = _generate(q_prompt, max_tokens=1)
+        predicted = text.strip()[:1].upper()
+        if predicted == answer_letter:
             correct += 1
 
-    result: dict[str, Any] = {
-        "quant_mode": "sglang",
-        "model_id": effective_model,
-        "gpu": gpu_name,
-        "load_time_s": round(load_time_s, 2),
-        "memory": {
-            "model_weights_mb": round(model_vram_mb, 1),
-            "reserved_mb": round(reserved_mb, 1),
-        },
+    mmlu_acc = round(correct / len(evaluated), 4)
+
+    proc.kill()
+    _model_cache.commit()
+
+    return {
+        "quant_mode": "tgi",
+        "model_id": mid,
+        "gpu": "A10G",
+        "memory": {"model_weights_mb": None},
         "latency": {
             "max_new_tokens": _MAX_NEW_TOKENS,
-            "mean_ms": round(lat_mean, 1),
+            "mean_ms": round(sum(latencies_ms) / n, 1),
             "p50_ms": round(latencies_ms[n // 2], 1),
-            "p95_ms": round(latencies_ms[int(n * 0.95)], 1),
-            "p99_ms": round(latencies_ms[int(n * 0.99)], 1),
-            "min_ms": round(min(latencies_ms), 1),
-            "max_ms": round(max(latencies_ms), 1),
-            "ttft_mean_ms": None,
-            "ttft_p95_ms": None,
-            "prefill_ms": None,
-            "decode_ms_per_tok": None,
-            "prefill_decode_ratio": None,
+            "p95_ms": round(latencies_ms[min(int(n * 0.95), n - 1)], 1),
+            "p99_ms": round(latencies_ms[min(int(n * 0.99), n - 1)], 1),
+            "ttft_mean_ms": ttft_mean,
+            "prefill_ms": ttft_mean,
+            "decode_ms_per_token": round((sum(latencies_ms) / n - ttft_mean) / max(_MAX_NEW_TOKENS - 1, 1), 2),
         },
         "throughput": {
-            "output_tokens_per_sec": round(output_tps, 1),
-            "max_new_tokens": 512,
+            "output_tokens_per_sec": round(total_tps, 1),
+            "max_new_tokens": _MAX_NEW_TOKENS,
         },
-        "batch_throughput": batch_thr,
+        "batch_throughput": batch_throughput,
         "perplexity": None,
         "quality": {
-            "mmlu_accuracy": round(correct / len(mmlu_q), 4),
+            "mmlu_accuracy": mmlu_acc,
             "correct": correct,
-            "total": len(mmlu_q),
+            "total": len(evaluated),
         },
-        "notes": _MODE_NOTES["sglang"],
+        "notes": _MODE_NOTES["tgi"],
     }
-    _model_cache.commit()
-    return build_flops_funnel(result, _LLAMA_8B_CONFIG, gpu_name, "sglang")
 
 
 @app.local_entrypoint()
 def main(
     output: str = "results/modal_quant_benchmark.json",
     gpu: str = "A10G",
-    modes: str = ",".join(_DEFAULT_MODES),
+    modes: str = ",".join(_ALL_MODES),
     merge: bool = False,
     model: str = "",
 ) -> None:
@@ -1647,9 +1681,9 @@ def main(
                 GPTQ mode uses its own checkpoint unless QUANT_GPTQ_MODEL env var is set.
 
     Special modes:
-        sglang:              Uses the SGLang engine image (separate from vLLM); same GPU as --gpu.
         tensor-parallel:     Always runs on 2x A100-80GB regardless of --gpu flag.
-        cpu-q4km/q5km/q8_0: GGUF quant sweep on CPU-only container; --gpu ignored.
+        tgi:                 Runs the TGI Docker image on A10G; --gpu is ignored.
+        cpu-q2k/q4km/q5km/q8_0: GGUF quant sweep on CPU-only container; --gpu ignored.
         continuous-batching: Runs on the specified --gpu using the async vLLM engine.
     """
     selected = [m.strip() for m in modes.split(",") if m.strip()]
@@ -1662,22 +1696,17 @@ def main(
     effective_model = model or BASE_MODEL
 
     print(f"Running quantization benchmark on {gpu} for modes: {selected}")
-    if gpu != "A10G":
-        print(
-            f"Note: run_quant_benchmark is decorated for A10G. To use {gpu}, change the gpu= "
-            f"parameter in the @app.function decorator and redeploy."
-        )
     print(f"Model: {effective_model}")
     print(f"Output → {out_path}  (GPU cost: ${gpu_cost_per_hr}/hr)")
     print("Results will stream in as each mode completes (parallel execution).\n")
 
     # Partition modes by required compute type
-    gpu_modes = [m for m in selected if m not in _MULTI_GPU_MODES and m not in _CPU_MODES and m not in _SGLANG_MODES]
-    sglang_modes = [m for m in selected if m in _SGLANG_MODES]
+    gpu_modes = [m for m in selected if m not in _MULTI_GPU_MODES and m not in _CPU_MODES and m not in _TGI_MODES]
     tp_modes = [m for m in selected if m in _MULTI_GPU_MODES]
     cpu_modes = [m for m in selected if m in _CPU_MODES]
+    tgi_modes = [m for m in selected if m in _TGI_MODES]
 
-    bench_fn = run_quant_benchmark
+    bench_fn = run_quant_benchmark.with_options(gpu=gpu) if gpu != "A10G" else run_quant_benchmark
 
     # Load existing results for this GPU if merging
     existing: dict[str, dict] = {}
@@ -1717,13 +1746,13 @@ def main(
         for result in bench_fn.map(gpu_modes, model_ids, order_outputs=False, return_exceptions=True):
             _record(result)
 
-    # SGLang modes (separate image; one call per mode)
-    for _ in sglang_modes:
-        _record(run_sglang_benchmark.remote(model_id=effective_model))
-
     # Tensor-parallel modes (each needs a dedicated 2xGPU call)
     for _ in tp_modes:
         _record(run_tp_benchmark.remote(model_id=effective_model))
+
+    # TGI mode (single GPU, dedicated image)
+    if tgi_modes:
+        _record(run_tgi_benchmark.remote(model_id=effective_model))
 
     # CPU/GGUF modes — one call sweeps all four quant levels; filter to what was requested
     if cpu_modes:

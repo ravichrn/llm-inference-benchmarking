@@ -6,9 +6,7 @@ __pycache__/
 .ruff_cache/
 dist/
 *.egg-info/
-# generated timestamped eval/ab runs accumulate — ignore by default
-results/eval_*.json
-results/ab_*.json
+results/
 .env
 :memory:
 *.md

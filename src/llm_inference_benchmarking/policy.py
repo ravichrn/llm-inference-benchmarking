@@ -1,12 +1,7 @@
 import os
-import threading
 import time
 
 from llm_inference_benchmarking.types import GatewayDecision, GatewayRequest
-
-_OLLAMA_CACHE: tuple[float, bool] = (0.0, False)  # (expires_at, result)
-_OLLAMA_LOCK = threading.Lock()
-_OLLAMA_TTL = float(os.getenv("GATEWAY_OLLAMA_HEALTH_TTL_S", "30"))
 
 
 class RoutingPolicyEngine:
@@ -20,17 +15,15 @@ class RoutingPolicyEngine:
         return self._resolve_backend(tier)
 
     def _auto_tier(self, req: GatewayRequest) -> str:
-        # If live metrics are provided, let the autoscaler signal bias tier selection.
-        live = (req.metadata or {}).get("live_metrics")
-        if live:
+        live_metrics = req.metadata.get("live_metrics") if req.metadata else None
+        if live_metrics:
             from llm_inference_benchmarking.autoscaler import autoscaler_signal
 
-            sig = autoscaler_signal(live)
+            sig = autoscaler_signal(live_metrics)
             if sig["scale_direction"] == "up":
                 return "premium"
             if sig["scale_direction"] == "down":
                 return "cheap"
-            # "hold" falls through to keyword/length heuristics below
 
         role = req.role.lower()
         if role == "fast":
@@ -55,8 +48,7 @@ class RoutingPolicyEngine:
             if _check_ollama():
                 model = os.getenv("GATEWAY_CHEAP_MODEL", os.getenv("OLLAMA_MODEL", "llama3.2"))
                 return GatewayDecision(tier=tier, backend="ollama", model=model, reason="cheap_local")
-            _val = os.getenv("GATEWAY_CHEAP_NO_CLOUD_FALLBACK", "").strip().lower()
-            if _val and _val not in ("0", "false", "no"):
+            if os.getenv("GATEWAY_CHEAP_NO_CLOUD_FALLBACK", "").strip().lower() in {"1", "true", "yes"}:
                 raise RuntimeError("cheap tier: Ollama unavailable and GATEWAY_CHEAP_NO_CLOUD_FALLBACK is set")
             model = os.getenv("GATEWAY_CHEAP_MODEL", "gpt-5.4-mini")
             return GatewayDecision(tier=tier, backend="openai", model=model, reason="cheap_cloud")
@@ -80,21 +72,24 @@ class RoutingPolicyEngine:
         return GatewayDecision(tier=tier, backend="openai", model=model, reason="balanced_openai")
 
 
-def _check_ollama() -> bool:
-    global _OLLAMA_CACHE
-    with _OLLAMA_LOCK:
-        expires_at, cached_result = _OLLAMA_CACHE
-        if time.monotonic() < expires_at:
-            return cached_result
-        try:
-            import http.client
+_ollama_cache: tuple[float, bool] = (0.0, False)
 
-            conn = http.client.HTTPConnection("localhost", 11434, timeout=1)
-            conn.request("GET", "/")
-            conn.getresponse()
-            conn.close()
-            result = True
-        except Exception:
-            result = False
-        _OLLAMA_CACHE = (time.monotonic() + _OLLAMA_TTL, result)
-        return result
+
+def _ollama_ttl() -> float:
+    return float(os.getenv("GATEWAY_OLLAMA_HEALTH_TTL_S", "10") or "10")
+
+
+def _check_ollama() -> bool:
+    global _ollama_cache
+    now = time.monotonic()
+    if now - _ollama_cache[0] < _ollama_ttl():
+        return _ollama_cache[1]
+    try:
+        import urllib.request
+
+        urllib.request.urlopen("http://localhost:11434", timeout=1)
+        result = True
+    except Exception:
+        result = False
+    _ollama_cache = (now, result)
+    return result

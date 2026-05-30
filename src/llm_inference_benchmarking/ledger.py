@@ -5,10 +5,8 @@ from pathlib import Path
 from llm_inference_benchmarking.types import GatewayDecision, GatewayUsage
 
 
-def get_ledger_db_path() -> Path | None:
-    """SQLite path for usage ledger. Returns None when ledger is disabled."""
-    if os.getenv("GATEWAY_LEDGER_DISABLED", "").strip().lower() in {"1", "true", "yes"}:
-        return None
+def get_ledger_db_path() -> Path:
+    """SQLite path for usage ledger (standalone default under user home)."""
     env = os.getenv("GATEWAY_LEDGER_DB", "").strip()
     if env:
         return Path(env).expanduser()
@@ -17,13 +15,17 @@ def get_ledger_db_path() -> Path | None:
     return base / "gateway_usage.db"
 
 
+def _connect(db_path: Path) -> sqlite3.Connection:
+    """Open a connection with WAL mode and a 5-second busy timeout."""
+    conn = sqlite3.connect(db_path, timeout=5.0)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
 def init_ledger() -> None:
     db_path = get_ledger_db_path()
-    if db_path is None:
-        return
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+    with _connect(db_path) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS gateway_usage (
@@ -47,10 +49,6 @@ def init_ledger() -> None:
             conn.execute("ALTER TABLE gateway_usage ADD COLUMN request_id TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError:
             pass
-        try:
-            conn.execute("ALTER TABLE gateway_usage ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass
         conn.commit()
 
 
@@ -70,19 +68,16 @@ def log_usage(
     ok: bool,
     error: str = "",
     request_id: str = "",
-    variant: str = "",
 ) -> None:
     _ensure_ledger()
     db_path = get_ledger_db_path()
-    if db_path is None:
-        return
-    with sqlite3.connect(db_path) as conn:
+    with _connect(db_path) as conn:
         conn.execute(
             """
             INSERT INTO gateway_usage (
                 tier, backend, model, input_tokens, output_tokens, total_tokens,
-                latency_ms, estimated_cost_usd, ok, error, request_id, variant
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                latency_ms, estimated_cost_usd, ok, error, request_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 decision.tier,
@@ -96,7 +91,6 @@ def log_usage(
                 1 if ok else 0,
                 error[:1000],
                 request_id,
-                variant,
             ),
         )
         conn.commit()
@@ -106,9 +100,7 @@ def get_today_success_cost_usd() -> float:
     """Return total estimated cost (USD) of successful requests logged today."""
     _ensure_ledger()
     db_path = get_ledger_db_path()
-    if db_path is None:
-        return 0.0
-    with sqlite3.connect(db_path) as conn:
+    with _connect(db_path) as conn:
         row = conn.execute(
             "SELECT COALESCE(SUM(estimated_cost_usd), 0.0) FROM gateway_usage WHERE ok = 1 AND date(ts) = date('now')"
         ).fetchone()
