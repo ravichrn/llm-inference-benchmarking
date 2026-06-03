@@ -1,7 +1,7 @@
 # llm-inference-benchmarking
 
 
-Cost-aware LLM routing gateway and benchmarking toolkit. Measures latency, cost, and quality tradeoffs across routing tiers (gateway benchmark) and quantization formats (Modal GPU benchmark).
+A benchmarking and evaluation harness for LLM inference that measures cost, throughput, and quality tradeoffs for Llama-3.1-8B across 15 configurations spanning quantization formats, serving engines, and inference optimizations on A10G, H100, and dual A100-80GB GPUs. Includes GPU kernel profiling, an LLM-as-judge evaluation layer with regression detection, and a cost-aware routing gateway that selects the cheapest configuration meeting a target quality threshold.
 
 ---
 
