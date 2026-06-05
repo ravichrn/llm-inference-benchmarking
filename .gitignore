@@ -7,6 +7,7 @@ __pycache__/
 dist/
 *.egg-info/
 results/
+charts/
 .env
 :memory:
 *.md

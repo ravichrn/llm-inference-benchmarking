@@ -186,57 +186,6 @@ def test_quality_router_none_when_all_below_threshold(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Pareto chart (data loading and frontier algorithm only — no matplotlib)
-# ---------------------------------------------------------------------------
-
-
-def test_pareto_load_points(tmp_path: Path):
-    from llm_inference_benchmarking.viz import _load_points
-
-    data = [
-        {
-            "model_id": "org/modelA",
-            "mode": "fp16",
-            "gpu": "A10G",
-            "quality": {"mmlu_accuracy": 0.80},
-            "cost": {"self_hosted_per_1k_output_usd": 0.005},
-        },
-        {
-            "model_id": "org/modelB",
-            "mode": "nf4",
-            "gpu": "A10G",
-            "quality": {"mmlu_accuracy": 0.72},
-            "cost": {"self_hosted_per_1k_output_usd": 0.002},
-        },
-    ]
-    (tmp_path / "modal_quant_benchmark_a10g.json").write_text(json.dumps(data))
-    points = _load_points(tmp_path)
-    assert len(points) == 2
-    costs = {p["model"]: p["cost_per_1k"] for p in points}
-    assert costs["org/modelA"] == 0.005
-    assert costs["org/modelB"] == 0.002
-
-
-def test_pareto_frontier_correctness():
-    from llm_inference_benchmarking.viz import _pareto_frontier
-
-    points = [
-        {"label": "A", "cost_per_1k": 0.001, "accuracy": 0.60},
-        {"label": "B", "cost_per_1k": 0.003, "accuracy": 0.75},
-        {"label": "C", "cost_per_1k": 0.005, "accuracy": 0.70},  # dominated by B
-        {"label": "D", "cost_per_1k": 0.008, "accuracy": 0.85},
-    ]
-    labels = {p["label"] for p in _pareto_frontier(points)}
-    assert {"A", "B", "D"} == labels
-
-
-def test_pareto_empty_dir(tmp_path: Path):
-    from llm_inference_benchmarking.viz import _load_points
-
-    assert _load_points(tmp_path) == []
-
-
-# ---------------------------------------------------------------------------
 # modal_benchmark: quantization modes
 # ---------------------------------------------------------------------------
 

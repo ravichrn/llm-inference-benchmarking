@@ -38,6 +38,7 @@ from typing import Any
 
 import modal
 
+from llm_inference_benchmarking.flops import build_flops_funnel
 from llm_inference_benchmarking.mmlu import _MMLU_SUBJECT_RANGES, _MMLU_SUBSET
 
 # ---------------------------------------------------------------------------
@@ -56,10 +57,12 @@ _DEFAULT_GPTQ_MODEL = "hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4"
 # Draft model for speculative decoding — same tokenizer vocab, ~2 GB VRAM.
 DRAFT_MODEL = "unsloth/Llama-3.2-1B-Instruct"
 
-# Model revision (git commit SHA) for reproducibility.
-# Override via MODEL_REVISION env var; defaults to "main" (latest).
-# To pin: set to the exact HF commit sha, e.g. "abc1234".
+# Model/dataset/GGUF revision for reproducibility.
+# Override via env vars; set to a full hex commit SHA to pin to an immutable snapshot.
+# Defaults to "main" (latest) for development convenience.
 _MODEL_REVISION = os.getenv("MODEL_REVISION", "main")
+_DATASET_REVISION = os.getenv("DATASET_REVISION", "main")
+_GGUF_REVISION = os.getenv("GGUF_REVISION", "main")
 
 _ALL_MODES = (
     "fp16",
@@ -68,6 +71,8 @@ _ALL_MODES = (
     "nf4-dq",
     "spec-dec",
     "vllm",
+    "kv-fp8",
+    "kv-analysis",
     "gptq",
     "gptq-triton",
     "awq",
@@ -87,6 +92,9 @@ _ALL_MODES = (
 # Modes that require multiple GPUs (dispatched to run_tp_benchmark instead of run_quant_benchmark)
 _MULTI_GPU_MODES = frozenset({"tensor-parallel"})
 
+# KV cache analysis mode — runs a context-length sweep rather than a single config benchmark
+_KV_ANALYSIS_MODES = frozenset({"kv-analysis"})
+
 # Modes that require a CPU-only container (dispatched to run_cpu_benchmark)
 _CPU_MODES = frozenset({"cpu-q2k", "cpu-q4km", "cpu-q5km", "cpu-q8_0"})
 
@@ -98,6 +106,14 @@ _TRTLLM_MODES = frozenset({"trtllm"})
 
 # Default GGUF repo for cpu-llama-cpp modes; override via GGUF_REPO env var
 _DEFAULT_GGUF_REPO = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
+
+# Model config used for FLOPs / MFU computation (Llama-3.1-8B dimensions)
+_MODEL_CFG_8B: dict[str, int] = {
+    "num_params": 8_000_000_000,
+    "num_layers": 32,
+    "seq_len": 512,
+    "hidden": 4096,
+}
 
 # GGUF quantization levels and their mode names (ordered cheap→expensive in quality)
 _GGUF_LEVELS: list[tuple[str, str]] = [
@@ -235,6 +251,25 @@ _MODE_NOTES: dict[str, str] = {
         "GGUF format, ~8.5 GB file. Minimal quality degradation vs fp16 but 2x the file size "
         "of Q4_K_M. Useful as the CPU accuracy ceiling for comparison against GPU fp16 results."
     ),
+    "kv-fp8": (
+        "KV cache FP8 quantization via vLLM's kv_cache_dtype='fp8_e4m3'. Unlike weight "
+        "quantization (--quantization fp8), kv-fp8 quantizes only the attention key-value "
+        "cache tensors stored in GPU VRAM — model weights remain in fp16. This halves KV cache "
+        "memory consumption, enabling longer context windows or larger batch sizes without extra "
+        "hardware. The VRAM saving grows with context length: at 8k tokens, KV cache accounts "
+        "for ~2 GB of VRAM for Llama-3.1-8B; fp8 KV halves this to ~1 GB. Quality impact is "
+        "typically <0.5pp MMLU drop. On A10G (Ampere sm_86) fp8 runs in software emulation; "
+        "H100 (Hopper sm_90) has native hardware fp8 support and shows additional throughput gains. "
+        "Compare KV cache VRAM usage against vllm mode at equivalent context lengths."
+    ),
+    "kv-analysis": (
+        "KV cache context-length sweep: measures KV cache VRAM footprint and latency at "
+        "context lengths [512, 1024, 2048, 4096, 8192] for both fp16 and fp8 KV cache. "
+        "Shows how KV memory scales linearly with context length, and quantifies the fp8 "
+        "memory savings ratio (expected ≈0.5x) and latency overhead across lengths. "
+        "This is a diagnostic mode — it runs multiple vLLM engines sequentially and returns "
+        "a context_sweep list rather than the standard benchmark result dict."
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -295,14 +330,33 @@ _image = (
     .pip_install("hf-transfer")
     # vLLM for the "vllm" and "fp8" benchmark modes — installed last to avoid CUDA conflicts
     .pip_install("vllm>=0.6.0")
+    # deep-gemm: required by vLLM >=0.7 for FP8 weight-quantised inference on H100 (Hopper sm_90).
+    # PyPI tarball omits the CUTLASS submodule, so we clone with --recursive.
+    # Must use GCC not clang: clang-14 (Ubuntu 22.04 default) rejects C++20 structured-binding
+    # lambda captures used in deep_gemm's SM100 code; GCC 11 (already in image) handles it.
+    .run_commands(
+        "apt-get install -y --no-install-recommends git"
+        " && git clone --recursive https://github.com/deepseek-ai/DeepGEMM.git /tmp/deep-gemm"
+        " && CC=gcc CXX=g++ pip install /tmp/deep-gemm"
+        " && rm -rf /tmp/deep-gemm"
+    )
+    # Bundle the local package so module-level imports (flops, mmlu) work in the container.
+    # Modal uploads modal_benchmark.py as /root/modal_benchmark.py and imports it in every
+    # container to find function definitions — without this, top-level
+    # `from llm_inference_benchmarking.*` imports raise ModuleNotFoundError.
+    .add_local_python_source("llm_inference_benchmarking")
 )
 
 # CPU-only image: llama-cpp-python (pre-built wheel) + huggingface_hub for GGUF download
-_cpu_image = modal.Image.debian_slim(python_version="3.11").run_commands(
-    # --prefer-binary downloads a pre-built wheel for llama-cpp-python (no C++ compilation).
-    # The wheel enables AVX2/AVX-512 VNNI kernels on modern x86 CPU containers.
-    "pip install 'llama-cpp-python>=0.3.0' --prefer-binary",
-    "pip install 'huggingface_hub>=0.23.0'",
+_cpu_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .run_commands(
+        # --prefer-binary downloads a pre-built wheel for llama-cpp-python (no C++ compilation).
+        # The wheel enables AVX2/AVX-512 VNNI kernels on modern x86 CPU containers.
+        "pip install 'llama-cpp-python>=0.3.0' --prefer-binary",
+        "pip install 'huggingface_hub>=0.23.0'",
+    )
+    .add_local_python_source("llm_inference_benchmarking")
 )
 
 # TGI image: pulls the official HuggingFace Text Generation Inference Docker image
@@ -315,6 +369,7 @@ _tgi_image = (
     # Without this, Modal's `python -c "..."` becomes `text-generation-launcher python -c "..."`.
     .dockerfile_commands(["ENTRYPOINT []", "CMD []"])
     .pip_install("httpx>=0.27.0", "huggingface_hub>=0.23.0")
+    .add_local_python_source("llm_inference_benchmarking")
 )
 
 # Persistent volume for caching downloaded model weights
@@ -360,6 +415,10 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
     # vllm and fp8 use the vLLM engine path; fp8 adds dynamic FP8 quantization on top
     if quant_mode == "vllm":
         return _run_vllm_benchmark(gpu_name, hf_token, model_id=model_id)
+    if quant_mode == "kv-fp8":
+        return _run_vllm_benchmark(gpu_name, hf_token, model_id=model_id, kv_cache_dtype="fp8_e4m3")
+    if quant_mode == "kv-analysis":
+        return _run_kv_analysis(gpu_name, hf_token, model_id=model_id)
     if quant_mode == "fp8":
         return _run_vllm_benchmark(gpu_name, hf_token, model_id=model_id, quantization="fp8")
     if quant_mode == "continuous-batching":
@@ -445,7 +504,7 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
             cache_dir="/model-cache/hf",
             device_map="auto",
             dtype=torch.float16,
-            revision="main",
+            revision=_MODEL_REVISION,
             **load_kw,
         )
         draft_model.eval()
@@ -492,13 +551,17 @@ def _run_vllm_benchmark(
     hf_token: str | None,
     model_id: str = "",
     quantization: str | None = None,
+    kv_cache_dtype: str | None = None,
 ) -> dict[str, Any]:
     """Benchmark the model via vLLM's LLM engine (PagedAttention, continuous batching).
 
     Args:
-        model_id:     HF model to load. Defaults to BASE_MODEL when empty.
-        quantization: Optional vLLM quantization scheme, e.g. "fp8" for dynamic FP8.
-                      On A10G (Ampere), fp8 runs in software emulation; H100 uses hardware.
+        model_id:       HF model to load. Defaults to BASE_MODEL when empty.
+        quantization:   Optional vLLM quantization scheme, e.g. "fp8" for dynamic FP8.
+                        On A10G (Ampere), fp8 runs in software emulation; H100 uses hardware.
+        kv_cache_dtype: Optional KV cache dtype, e.g. "fp8_e4m3". Quantizes only the KV
+                        cache tensors (not weights), halving KV cache VRAM at the cost of
+                        slight attention precision loss. Most effective at long context lengths.
     """
     import torch
     from vllm import LLM, SamplingParams
@@ -510,7 +573,12 @@ def _run_vllm_benchmark(
     os.environ["VLLM_USE_V1"] = "0"
 
     effective_model = model_id or BASE_MODEL
-    quant_mode_label = quantization if quantization else "vllm"
+    if kv_cache_dtype:
+        quant_mode_label = "kv-fp8"
+    elif quantization:
+        quant_mode_label = quantization
+    else:
+        quant_mode_label = "vllm"
 
     load_kw: dict[str, Any] = {}
     if hf_token:
@@ -531,6 +599,11 @@ def _run_vllm_benchmark(
     }
     if quantization:
         llm_kwargs["quantization"] = quantization
+    if kv_cache_dtype:
+        llm_kwargs["kv_cache_dtype"] = kv_cache_dtype
+        # FA3 (used on H100) requires BF16 model dtype when KV cache is FP8.
+        # FP16 + FP8 KV raises: "For FP8 input, output must have dtype BF16".
+        llm_kwargs["dtype"] = "bfloat16"
 
     llm = LLM(**llm_kwargs)
     load_time_s = time.perf_counter() - t_load_start
@@ -704,6 +777,124 @@ def _measure_quality_vllm(llm: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# KV cache analysis (context-length sweep)
+# ---------------------------------------------------------------------------
+
+
+def _run_kv_analysis(
+    gpu_name: str,
+    hf_token: str | None,
+    model_id: str = "",
+    context_lengths: list[int] | None = None,
+) -> dict[str, Any]:
+    """Sweep context lengths measuring KV cache VRAM for fp16 vs fp8 KV quantization.
+
+    For each context length in [512, 1024, 2048, 4096, 8192]:
+      1. Load vLLM with fp16 KV cache, generate a prompt that fills the context.
+      2. Record peak VRAM delta (proxy for KV cache size) and latency.
+      3. Repeat with kv_cache_dtype='fp8_e4m3'.
+
+    Returns a result dict with a context_sweep list showing the memory savings ratio
+    (expected ≈0.5x) and latency overhead at each context length.
+    """
+    import torch
+    from vllm import LLM, SamplingParams
+
+    os.environ["TRANSFORMERS_CACHE"] = "/model-cache/hf"
+    os.environ["HF_HOME"] = "/model-cache/hf"
+    os.environ["VLLM_USE_V1"] = "0"
+
+    effective_model = model_id or BASE_MODEL
+    ctx_lengths = context_lengths or [512, 1024, 2048, 4096, 8192]
+    print(f"[kv-analysis] Context-length KV cache sweep for {effective_model}")
+    print(f"[kv-analysis] Context lengths: {ctx_lengths}")
+
+    # Build prompts of target lengths using a repeated token pattern
+    _FILLER = "The quick brown fox jumps over the lazy dog. " * 200
+
+    sweep_results: list[dict[str, Any]] = []
+    for ctx_len in ctx_lengths:
+        row: dict[str, Any] = {"context_len": ctx_len}
+        # Truncate filler to approximate context length in chars (rough: 4 chars ≈ 1 token)
+        prompt = _FILLER[: ctx_len * 4]
+
+        for kv_dtype, label in ((None, "fp16"), ("fp8_e4m3", "fp8")):
+            llm_kwargs: dict[str, Any] = {
+                "model": effective_model,
+                "revision": _MODEL_REVISION,
+                "dtype": "float16",
+                "gpu_memory_utilization": 0.90,
+                "max_model_len": ctx_len,
+                "download_dir": "/model-cache/hf",
+                "trust_remote_code": False,
+            }
+            if kv_dtype:
+                llm_kwargs["kv_cache_dtype"] = kv_dtype
+                # FA3 (H100) requires BF16 model dtype when KV cache is FP8
+                llm_kwargs["dtype"] = "bfloat16"
+
+            torch.cuda.reset_peak_memory_stats()
+            try:
+                llm = LLM(**llm_kwargs)
+                vram_after_load = torch.cuda.max_memory_allocated() / 1024**2
+
+                params = SamplingParams(max_tokens=50, temperature=0.0)
+                t0 = time.perf_counter()
+                llm.generate([prompt], params, use_tqdm=False)
+                lat_ms = (time.perf_counter() - t0) * 1000
+                vram_peak = torch.cuda.max_memory_allocated() / 1024**2
+                kv_vram_mb = max(vram_peak - vram_after_load, 0.0)
+
+                row[f"{label}_kv_vram_mb"] = round(kv_vram_mb, 1)
+                row[f"{label}_total_vram_mb"] = round(vram_peak, 1)
+                row[f"{label}_lat_ms"] = round(lat_ms, 1)
+
+                print(f"[kv-analysis] ctx={ctx_len:5d}  {label}  kv_vram={kv_vram_mb:.0f}MB  lat={lat_ms:.0f}ms")
+                # Free the engine before loading the next config
+                del llm
+                torch.cuda.empty_cache()
+            except Exception as exc:
+                print(f"[kv-analysis] ctx={ctx_len} {label} FAILED: {exc}")
+                row[f"{label}_kv_vram_mb"] = None
+                row[f"{label}_lat_ms"] = None
+
+        # Compute savings ratio
+        fp16_vram = row.get("fp16_kv_vram_mb")
+        fp8_vram = row.get("fp8_kv_vram_mb")
+        if fp16_vram and fp8_vram and fp16_vram > 0:
+            row["vram_ratio"] = round(fp8_vram / fp16_vram, 3)
+        else:
+            row["vram_ratio"] = None
+
+        sweep_results.append(row)
+
+    # Print summary table
+    print("\n[kv-analysis] KV Cache Memory vs Context Length (fp16 vs fp8):")
+    print(f"  {'ctx_len':>8}  {'fp16 KV MB':>12}  {'fp8 KV MB':>11}  {'ratio':>7}  {'fp16 lat':>10}  {'fp8 lat':>10}")
+    print("  " + "─" * 65)
+    for row in sweep_results:
+        fp16_v = row.get("fp16_kv_vram_mb")
+        fp8_v = row.get("fp8_kv_vram_mb")
+        ratio = row.get("vram_ratio")
+        fp16_l = row.get("fp16_lat_ms")
+        fp8_l = row.get("fp8_lat_ms")
+        print(
+            f"  {row['context_len']:>8}  "
+            f"{fp16_v or 'n/a':>12}  {fp8_v or 'n/a':>11}  "
+            f"{ratio or 'n/a':>7}  "
+            f"{fp16_l or 'n/a':>10}  {fp8_l or 'n/a':>10}"
+        )
+
+    _model_cache.commit()
+    return {
+        "quant_mode": "kv-analysis",
+        "model_id": effective_model,
+        "gpu": gpu_name,
+        "context_sweep": sweep_results,
+        "notes": _MODE_NOTES["kv-analysis"],
+    }
+
+
 # Continuous batching benchmark
 # ---------------------------------------------------------------------------
 
@@ -1042,7 +1233,7 @@ def _measure_perplexity(model: Any, tokenizer: Any, device: str) -> dict[str, fl
     STRIDE = 128
     MAX_LEN = 1024  # tokens to evaluate (keep it fast)
 
-    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test", revision=_DATASET_REVISION)
     text = "\n\n".join(dataset["text"])  # type: ignore[index]
     encodings = tokenizer(text, return_tensors="pt")
     seq_len = min(encodings.input_ids.size(1), MAX_LEN)
@@ -1148,6 +1339,71 @@ def _gpu_output_path(base: str, gpu: str) -> Path:
         return p.parent / f"modal_quant_{slug}.json"
     return p
 
+
+# ---------------------------------------------------------------------------
+# Per-GPU wrapper functions (Modal 1.x removed with_options; GPU must be set
+# at decoration time, so we define one thin wrapper per supported GPU type.
+# Each wrapper calls run_quant_benchmark.local() which executes the full
+# implementation body inside the container with that GPU attached.)
+# ---------------------------------------------------------------------------
+
+
+@app.function(
+    gpu="T4",
+    image=_image,
+    timeout=7200,
+    volumes={"/model-cache": _model_cache},
+    secrets=_modal_secrets,
+    memory=32768,
+)
+def _run_quant_t4(quant_mode: str, model_id: str = "") -> dict[str, Any]:
+    return run_quant_benchmark.local(quant_mode, model_id=model_id)
+
+
+@app.function(
+    gpu="A100-40GB",
+    image=_image,
+    timeout=7200,
+    volumes={"/model-cache": _model_cache},
+    secrets=_modal_secrets,
+    memory=32768,
+)
+def _run_quant_a100_40gb(quant_mode: str, model_id: str = "") -> dict[str, Any]:
+    return run_quant_benchmark.local(quant_mode, model_id=model_id)
+
+
+@app.function(
+    gpu="A100-80GB",
+    image=_image,
+    timeout=7200,
+    volumes={"/model-cache": _model_cache},
+    secrets=_modal_secrets,
+    memory=65536,
+)
+def _run_quant_a100_80gb(quant_mode: str, model_id: str = "") -> dict[str, Any]:
+    return run_quant_benchmark.local(quant_mode, model_id=model_id)
+
+
+@app.function(
+    gpu="H100",
+    image=_image,
+    timeout=7200,
+    volumes={"/model-cache": _model_cache},
+    secrets=_modal_secrets,
+    memory=65536,
+)
+def _run_quant_h100(quant_mode: str, model_id: str = "") -> dict[str, Any]:
+    return run_quant_benchmark.local(quant_mode, model_id=model_id)
+
+
+# Maps --gpu flag values to the pre-configured Modal function for that GPU.
+_BENCH_FN_FOR_GPU: dict[str, Any] = {
+    "A10G": run_quant_benchmark,
+    "T4": _run_quant_t4,
+    "A100-40GB": _run_quant_a100_40gb,
+    "A100-80GB": _run_quant_a100_80gb,
+    "H100": _run_quant_h100,
+}
 
 # ---------------------------------------------------------------------------
 # Tensor parallelism benchmark (multi-GPU Modal function)
@@ -1331,6 +1587,7 @@ def run_cpu_benchmark(model_id: str = "") -> list[dict[str, Any]]:
             filename=filename,
             cache_dir=cache_dir,
             token=os.environ.get("HF_TOKEN"),
+            revision=_GGUF_REVISION,
         )
         llm = Llama(
             model_path=gguf_path,
@@ -1660,7 +1917,7 @@ def main(
     output: str = "results/modal_quant_benchmark.json",
     gpu: str = "A10G",
     modes: str = ",".join(_ALL_MODES),
-    merge: bool = False,
+    merge: bool = True,
     model: str = "",
 ) -> None:
     """Fan out benchmark across all quant modes in parallel, write JSON results.
@@ -1685,6 +1942,8 @@ def main(
         tgi:                 Runs the TGI Docker image on A10G; --gpu is ignored.
         cpu-q2k/q4km/q5km/q8_0: GGUF quant sweep on CPU-only container; --gpu ignored.
         continuous-batching: Runs on the specified --gpu using the async vLLM engine.
+        kv-fp8:              vLLM with fp8 KV cache quantization (weights stay fp16).
+        kv-analysis:         Context-length sweep measuring KV cache VRAM (fp16 vs fp8).
     """
     selected = [m.strip() for m in modes.split(",") if m.strip()]
     invalid = [m for m in selected if m not in _ALL_MODES]
@@ -1706,7 +1965,9 @@ def main(
     cpu_modes = [m for m in selected if m in _CPU_MODES]
     tgi_modes = [m for m in selected if m in _TGI_MODES]
 
-    bench_fn = run_quant_benchmark.with_options(gpu=gpu) if gpu != "A10G" else run_quant_benchmark
+    if gpu not in _BENCH_FN_FOR_GPU:
+        raise SystemExit(f"Unsupported --gpu {gpu!r}. Valid: {list(_BENCH_FN_FOR_GPU)}")
+    bench_fn = _BENCH_FN_FOR_GPU[gpu]
 
     # Load existing results for this GPU if merging
     existing: dict[str, dict] = {}
@@ -1726,6 +1987,14 @@ def main(
         if isinstance(result, Exception):
             print(f"  [FAILED] {result}")
             return
+        # Attach MFU / roofline analysis if not already present.
+        if "flops_funnel" not in result:
+            build_flops_funnel(
+                result,
+                model_cfg=_MODEL_CFG_8B,
+                gpu_name=result.get("gpu", gpu),
+                quant_mode=result.get("quant_mode", ""),
+            )
         new_results.append(result)
         mode = result["quant_mode"]
         ppl_raw = result.get("perplexity")
@@ -1738,7 +2007,13 @@ def main(
         mem_info = result.get("memory") or {}
         mem = mem_info.get("model_weights_mb") or mem_info.get("total_vram_mb") or 0
         acc_str = f"{acc:.0%}" if acc == acc else "n/a"
-        print(f"  [{mode:20s}] ppl={ppl_str}  lat={lat:.0f}ms  tps={tps:.0f}  mmlu={acc_str}  vram={mem:.0f}MB")
+        ff = result.get("flops_funnel") or {}
+        mfu = ff.get("achieved_mfu_pct")
+        mfu_str = f"{mfu:.1f}%" if mfu is not None else "n/a"
+        print(
+            f"  [{mode:20s}] ppl={ppl_str}  lat={lat:.0f}ms  tps={tps:.0f}"
+            f"  mmlu={acc_str}  vram={mem:.0f}MB  mfu={mfu_str}"
+        )
 
     # Standard GPU modes (fan-out in parallel)
     if gpu_modes:
@@ -1768,6 +2043,24 @@ def main(
             print(f"  [FAILED] cpu benchmark: {cpu_result}")
 
     total_s = time.perf_counter() - t_start
+
+    # Print MFU summary table sorted by utilisation descending
+    mfu_rows = [
+        (r["quant_mode"], (r.get("flops_funnel") or {}), (r.get("throughput") or {}))
+        for r in new_results
+        if (r.get("flops_funnel") or {}).get("achieved_mfu_pct") is not None
+    ]
+    if mfu_rows:
+        print(f"\n{'─' * 72}")
+        print(f"  {'Mode':<22} {'TPS':>7}  {'MFU%':>6}  {'Bound':>8}  {'Roofline TPS':>14}")
+        print(f"  {'─' * 22} {'─' * 7}  {'─' * 6}  {'─' * 8}  {'─' * 14}")
+        for mode, ff, thr in sorted(mfu_rows, key=lambda x: -(x[1].get("achieved_mfu_pct") or 0)):
+            tps = thr.get("output_tokens_per_sec", 0)
+            mfu = ff.get("achieved_mfu_pct", 0)
+            bound = ff.get("bound", "n/a")
+            roof = ff.get("roofline_bound_tps", 0)
+            print(f"  [{mode:<20s}]  {tps:>7.0f}  {mfu:>5.1f}%  {bound:>8}  {roof:>14.0f}")
+        print(f"{'─' * 72}\n")
 
     # Merge new results over existing, then sort by canonical mode order.
     # Use .get() with fallback so legacy "cpu-llama-cpp" entries in old result files don't crash.

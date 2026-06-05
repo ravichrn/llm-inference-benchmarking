@@ -1,7 +1,22 @@
+import logging
 import os
 import time
 
 from llm_inference_benchmarking.types import GatewayDecision, GatewayRequest
+
+_logger = logging.getLogger(__name__)
+
+# Lazily constructed singleton — avoids importing classifier_router at module load
+_adaptive_router = None
+
+
+def _get_adaptive_router():
+    global _adaptive_router
+    if _adaptive_router is None:
+        from llm_inference_benchmarking.classifier_router import AdaptiveRouter
+
+        _adaptive_router = AdaptiveRouter()
+    return _adaptive_router
 
 
 class RoutingPolicyEngine:
@@ -15,6 +30,7 @@ class RoutingPolicyEngine:
         return self._resolve_backend(tier)
 
     def _auto_tier(self, req: GatewayRequest) -> str:
+        # 1. Autoscaler signal (live metrics override — highest priority)
         live_metrics = req.metadata.get("live_metrics") if req.metadata else None
         if live_metrics:
             from llm_inference_benchmarking.autoscaler import autoscaler_signal
@@ -25,6 +41,24 @@ class RoutingPolicyEngine:
             if sig["scale_direction"] == "down":
                 return "cheap"
 
+        # 2. ML classifier — returns None when ledger has < MIN_TRAINING_SAMPLES rows
+        try:
+            router = _get_adaptive_router()
+            result = router.predict_with_confidence(str(req.prompt))
+            if result is not None:
+                ml_tier, confidence = result
+                _logger.debug(
+                    "[auto-tier] ml_classifier predicted %r (confidence=%.2f) for prompt_len=%d",
+                    ml_tier,
+                    confidence,
+                    len(str(req.prompt)),
+                )
+                return ml_tier
+        except Exception as exc:
+            _logger.debug("[auto-tier] classifier error, falling back to heuristics: %s", exc)
+
+        # 3. Keyword + length heuristics (original fallback — unchanged)
+        _logger.debug("[auto-tier] classifier fallback (insufficient data or error), using heuristics")
         role = req.role.lower()
         if role == "fast":
             return "cheap"
@@ -85,9 +119,11 @@ def _check_ollama() -> bool:
     if now - _ollama_cache[0] < _ollama_ttl():
         return _ollama_cache[1]
     try:
-        import urllib.request
+        import http.client
 
-        urllib.request.urlopen("http://localhost:11434", timeout=1)
+        conn = http.client.HTTPConnection("localhost", 11434, timeout=1)
+        conn.request("HEAD", "/")
+        conn.getresponse()
         result = True
     except Exception:
         result = False

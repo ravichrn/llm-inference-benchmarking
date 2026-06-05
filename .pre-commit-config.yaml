@@ -19,4 +19,5 @@ repos:
     rev: 1.9.4
     hooks:
       - id: bandit
-        args: ["-c", "pyproject.toml", "--skip", "B101"]
+        args: ["-c", "pyproject.toml"]
+        exclude: '^tests/'
