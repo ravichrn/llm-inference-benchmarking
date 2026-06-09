@@ -14,6 +14,7 @@ Usage (internal — called from policy.py):
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sqlite3
@@ -248,3 +249,78 @@ class AdaptiveRouter:
 
 def _default_ledger_path() -> Path:
     return Path(os.getenv("GATEWAY_LEDGER_DB", "gateway_usage.db"))
+
+
+def retrain_from_judge_scores(
+    eval_dir: Path | str = "results",
+    min_score: float = 7.0,
+    db_path: Path | None = None,
+) -> int:
+    """Retrain the AdaptiveRouter using LLM-as-judge quality scores from eval result files.
+
+    Reads all eval_*.json files in eval_dir. Each file contains a list of tasks with
+    a ``score`` (0-10) and the ``tier`` that was used. Tasks whose score >= min_score
+    are treated as positive training examples; tasks below the threshold are treated as
+    negative (downgrade signal).
+
+    Returns the number of samples written to the ledger, or 0 if nothing was found.
+
+    Why this matters: the classifier normally trains on past routing decisions that were
+    themselves produced by keyword heuristics, making training circular. Judge scores are
+    an independent quality signal — they let the router learn whether a tier was
+    *actually sufficient*, not just which tier the heuristic chose.
+    """
+    eval_path = Path(eval_dir)
+    rows: list[tuple[int, str]] = []  # (estimated_input_tokens, tier)
+
+    for f in sorted(eval_path.glob("eval_*.json")):
+        try:
+            data = json.loads(f.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        tier = data.get("tier")
+        if tier not in _CLASS_INDEX:
+            continue
+        for task in data.get("results", []):
+            score = task.get("score")
+            if score is None:
+                continue
+            # Use latency_ms as a rough proxy for prompt complexity when tokens unknown
+            lat = task.get("latency_ms") or 0
+            estimated_tokens = max(10, int(lat / 10))  # crude but consistent proxy
+            effective_tier = tier if float(score) >= min_score else _downgrade_tier(tier)
+            rows.append((estimated_tokens, effective_tier))
+
+    if not rows:
+        return 0
+
+    db = db_path or _default_ledger_path()
+    try:
+        con = sqlite3.connect(str(db))
+        con.execute(
+            """CREATE TABLE IF NOT EXISTS gateway_usage (
+                ts TEXT, tier TEXT, input_tokens INTEGER, output_tokens INTEGER,
+                latency_ms REAL, cost_usd REAL, ok INTEGER DEFAULT 1
+            )"""
+        )
+        con.executemany(
+            "INSERT INTO gateway_usage (ts, tier, input_tokens, output_tokens, latency_ms, cost_usd, ok) "
+            "VALUES (datetime('now'), ?, ?, 0, 0, 0, 1)",
+            [(tier, tokens) for tokens, tier in rows],
+        )
+        con.commit()
+        con.close()
+    except Exception:
+        return 0
+
+    import logging
+
+    logging.getLogger(__name__).info("[classifier] inserted %d judge-score samples into ledger", len(rows))
+    return len(rows)
+
+
+def _downgrade_tier(tier: str) -> str:
+    """Return the next cheaper tier (premium→balanced→cheap)."""
+    order = ["cheap", "balanced", "premium"]
+    idx = order.index(tier) if tier in order else 2
+    return order[max(0, idx - 1)]

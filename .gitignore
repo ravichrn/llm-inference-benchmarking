@@ -11,3 +11,4 @@ charts/
 .env
 :memory:
 *.md
+*.db

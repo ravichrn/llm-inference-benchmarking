@@ -149,6 +149,8 @@ td strong { color: var(--text); }
     <a href="#quant">All Quantization Modes</a>
     <a href="#h100">H100 vs A10G</a>
     <a href="#charts">Analysis Charts</a>
+    <a href="#energy">Energy Efficiency</a>
+    <a href="#sizeswp">Size vs Quant</a>
     <div class="nav-group">Gateway</div>
     <a href="#gateway">Tier Benchmark</a>
     <a href="#cache">Prefix Caching</a>
@@ -167,7 +169,7 @@ td strong { color: var(--text); }
 <h1>LLM Inference Benchmark Report</h1>
 <p class="page-subtitle">
   Model: Meta-Llama-3.1-8B-Instruct &nbsp;·&nbsp;
-  GPUs: A10G · H100 · 2×A100-80GB &nbsp;·&nbsp;
+  GPUs: A10G · H100 · 2xA100-80GB &nbsp;·&nbsp;
   Platform: Modal (GPU) · Lambda Labs (Nsight)
 </p>
 
@@ -182,8 +184,8 @@ td strong { color: var(--text); }
 </div>
   <div class="stat-card">
   <div class="label">H100 vs A10G</div>
-  <div class="value cyan">8.0×</div>
-  <div class='sub'>batch-8 speedup · same 94% MMLU</div>
+  <div class="value cyan">8.0x</div>
+  <div class='sub'>fp8 vs vllm · batch-8 · same 94% MMLU (CS/ML subset)</div>
 </div>
   <div class="stat-card">
   <div class="label">Best MMLU</div>
@@ -202,14 +204,14 @@ td strong { color: var(--text); }
 </div>
   <div class="stat-card">
   <div class="label">Gateway P50</div>
-  <div class="value green">2,048ms</div>
+  <div class="value green">2,246ms</div>
   <div class='sub'>cheap tier · gpt-5.4-mini</div>
 </div>
 </div>
 
 <div class="insight">
   <strong>Key finding:</strong> H100 fp8 (hardware-native Hopper FP8 tensor cores) is
-  <strong>8.0× faster</strong> than A10G vllm at batch-8 with <strong>identical 94% MMLU</strong>.
+  <strong>8.0x faster</strong> than A10G vllm at batch-8 with <strong>identical 94% MMLU (CS/ML-domain subset)</strong>.
   A single H100 at $6.45/hr outperforms two A100-80GBs at $8.00/hr combined.
   Note: 8B model uses only 20% of H100's 80GB HBM3.
 </div>
@@ -224,7 +226,7 @@ td strong { color: var(--text); }
   don't expose per-token log-likelihood, so WikiText-2 eval is unavailable.
 </p>
 <div class="card"><table>
-<thead><tr><th>Mode <span class="tip" data-tip="Quantization format or inference engine. Affects speed, VRAM, and output quality.">ⓘ</span></th><th class="right">Mean Lat <span class="tip" data-tip="Average end-to-end request latency in milliseconds. Lower is better.">ⓘ</span></th><th class="right">Batch-1 <span class="tip" data-tip="Output tokens/sec with a single concurrent request. Measures single-user responsiveness.">ⓘ</span></th><th class="right">Batch-4 <span class="tip" data-tip="Output tokens/sec across 4 simultaneous requests.">ⓘ</span></th><th class="right">Batch-8 <span class="tip" data-tip="Output tokens/sec across 8 simultaneous requests. Higher batch sizes better utilise GPU parallelism.">ⓘ</span></th><th class="right">MMLU <span class="tip" data-tip="Massive Multitask Language Understanding — accuracy on 50 questions across CS, ML, systems, and statistics. Higher is better. Quantifies quality loss from compression.">ⓘ</span></th><th class="right">MFU% <span class="tip" data-tip="Model FLOPs Utilization — achieved throughput as % of GPU's theoretical peak. Higher = better hardware use. Cyan = memory-bandwidth-bound; blue = compute-bound. 8B inference is almost always memory-bound.">ⓘ</span></th><th class="right">Perplexity <span class="tip" data-tip="How confidently the model predicts held-out WikiText-2 text. Lower is better. Not available for vLLM/sglang — those engines don't expose per-token log-likelihood.">ⓘ</span></th></tr></thead>
+<thead><tr><th>Mode <span class="tip" data-tip="Quantization format or inference engine. Affects speed, VRAM, and output quality.">ⓘ</span></th><th class="right">Mean Lat <span class="tip" data-tip="Average end-to-end request latency in milliseconds. Lower is better.">ⓘ</span></th><th class="right">Batch-1 <span class="tip" data-tip="Output tokens/sec with a single concurrent request. Measures single-user responsiveness.">ⓘ</span></th><th class="right">Batch-4 <span class="tip" data-tip="Output tokens/sec across 4 simultaneous requests.">ⓘ</span></th><th class="right">Batch-8 <span class="tip" data-tip="Output tokens/sec across 8 simultaneous requests. Higher batch sizes better utilise GPU parallelism.">ⓘ</span></th><th class="right">MMLU <span class="tip" data-tip="Accuracy on a 50-question CS/ML-domain subset (computer science, ML, systems, statistics). Not the full 57-subject MMLU benchmark — published 5-shot general MMLU for Llama-3.1-8B is ~66-68%. Higher is better. Quantifies quality loss from compression within this domain.">ⓘ</span></th><th class="right">MFU% <span class="tip" data-tip="Model FLOPs Utilization — achieved throughput as % of GPU's theoretical peak. Higher = better hardware use. Cyan = memory-bandwidth-bound; blue = compute-bound. 8B inference is almost always memory-bound.">ⓘ</span></th><th class="right">Perplexity <span class="tip" data-tip="How confidently the model predicts held-out WikiText-2 text. Lower is better. Not available for vLLM/sglang — those engines don't expose per-token log-likelihood.">ⓘ</span></th></tr></thead>
 <tbody><tr>
 <td><strong>fp8</strong><span class="badge badge-h100">H100</span></td>
 <td class="right">1,116</td>
@@ -233,24 +235,6 @@ td strong { color: var(--text); }
 <td class="right best">1,785</td>
 <td class="right best">94%</td>
 <td class="right">55.4%</td>
-<td class="right dim">—</td>
-</tr><tr>
-<td><strong>vllm</strong><span class="badge badge-h100">H100</span></td>
-<td class="right">1,673</td>
-<td class="right ">154</td>
-<td class="right ">606</td>
-<td class="right ">1,211</td>
-<td class="right best">94%</td>
-<td class="right">73.4%</td>
-<td class="right dim">—</td>
-</tr><tr>
-<td><strong>kv-fp8</strong><span class="badge badge-h100">H100</span></td>
-<td class="right">1,643</td>
-<td class="right ">156</td>
-<td class="right ">611</td>
-<td class="right ">1,210</td>
-<td class="right best">94%</td>
-<td class="right">37.3%</td>
 <td class="right dim">—</td>
 </tr><tr>
 <td><strong>tensor-parallel</strong><span class="badge badge-a100">A100</span></td>
@@ -263,10 +247,10 @@ td strong { color: var(--text); }
 <td class="right dim">—</td>
 </tr><tr>
 <td><strong>gptq</strong><span class="badge badge-a10g">A10G</span></td>
-<td class="right">7,558</td>
-<td class="right ">34</td>
-<td class="right ">138</td>
-<td class="right ">268</td>
+<td class="right">7,666</td>
+<td class="right ">33</td>
+<td class="right ">132</td>
+<td class="right ">267</td>
 <td class="right ">76%</td>
 <td class="right">22.2%</td>
 <td class="right ">5.31</td>
@@ -289,14 +273,14 @@ td strong { color: var(--text); }
 <td class="right">77.6%</td>
 <td class="right dim">—</td>
 </tr><tr>
-<td><strong>sglang</strong><span class="badge badge-a10g">A10G</span></td>
-<td class="right">9,967</td>
-<td class="right ">29</td>
-<td class="right ">108</td>
-<td class="right ">220</td>
-<td class="right best">94%</td>
-<td class="right">76.0%</td>
-<td class="right dim">—</td>
+<td><strong>fp16</strong><span class="badge badge-a10g">A10G</span></td>
+<td class="right">9,523</td>
+<td class="right ">27</td>
+<td class="right ">104</td>
+<td class="right ">203</td>
+<td class="right ">74%</td>
+<td class="right">71.2%</td>
+<td class="right best">5.10</td>
 </tr><tr>
 <td><strong>flash-attn</strong><span class="badge badge-a10g">A10G</span></td>
 <td class="right">9,559</td>
@@ -305,15 +289,6 @@ td strong { color: var(--text); }
 <td class="right ">202</td>
 <td class="right ">74%</td>
 <td class="right">71.2%</td>
-<td class="right best">5.10</td>
-</tr><tr>
-<td><strong>fp16</strong><span class="badge badge-a10g">A10G</span></td>
-<td class="right">9,564</td>
-<td class="right ">26</td>
-<td class="right ">103</td>
-<td class="right ">201</td>
-<td class="right ">74%</td>
-<td class="right">70.7%</td>
 <td class="right best">5.10</td>
 </tr><tr>
 <td><strong>torch-compile</strong><span class="badge badge-a10g">A10G</span></td>
@@ -353,12 +328,12 @@ td strong { color: var(--text); }
 <td class="right best">5.13</td>
 </tr><tr>
 <td><strong>nf4</strong><span class="badge badge-a10g">A10G</span></td>
-<td class="right">10,436</td>
-<td class="right ">24</td>
+<td class="right">10,329</td>
+<td class="right ">26</td>
 <td class="right ">28</td>
-<td class="right ">55</td>
+<td class="right ">56</td>
 <td class="right ">74%</td>
-<td class="right">16.5%</td>
+<td class="right">17.0%</td>
 <td class="right ">5.28</td>
 </tr><tr>
 <td><strong>spec-dec</strong><span class="badge badge-a10g">A10G</span></td>
@@ -396,14 +371,6 @@ td strong { color: var(--text); }
 <td class="right">55.4%</td>
 <td class="right dim">$6.45/hr</td>
 </tr><tr>
-<td><strong>kv-fp8</strong><span class="badge badge-h100">H100</span></td>
-<td class="right">156</td>
-<td class="right">611</td>
-<td class="right ">1,210</td>
-<td class="right best">94%</td>
-<td class="right">37.3%</td>
-<td class="right dim">$6.45/hr</td>
-</tr><tr>
 <td><strong>tensor-parallel</strong><span class="badge badge-a100">A100</span></td>
 <td class="right">148</td>
 <td class="right">562</td>
@@ -421,9 +388,9 @@ td strong { color: var(--text); }
 <td class="right dim">$1.10/hr</td>
 </tr><tr>
 <td><strong>gptq</strong><span class="badge badge-a10g">A10G</span></td>
-<td class="right">34</td>
-<td class="right">138</td>
-<td class="right ">268</td>
+<td class="right">33</td>
+<td class="right">132</td>
+<td class="right ">267</td>
 <td class="right ">76%</td>
 <td class="right">22.2%</td>
 <td class="right dim">$1.10/hr</td>
@@ -441,7 +408,8 @@ td strong { color: var(--text); }
 <section id="charts" class="section">
 <div class="section-title">Analysis Charts</div>
 
-<p class="section-sub">H100 and A10G shown separately — their throughput scales differ by 8×, so combining hides intra-GPU mode differences.</p>
+<p class="section-sub">H100 and A10G shown separately — their throughput scales differ by 8x,
+so combining hides intra-GPU mode differences.</p>
 
 <div class="charts-2">
   <div class="chart-card">
@@ -451,7 +419,7 @@ td strong { color: var(--text); }
 </div>
 <script>
 (function(){
-  var cfg = {"type": "bar", "data": {"labels": ["fp8 (H100)", "vllm (H100)", "kv-fp8 (H100)", "tensor-parallel (A100-)"], "datasets": [{"label": "Batch 1", "data": [232.0, 153.6, 156.3, 147.5], "backgroundColor": "#7c6af7bb", "borderColor": "#7c6af7", "borderWidth": 1, "borderRadius": 3}, {"label": "Batch 4", "data": [900.1, 606.1, 610.6, 562.3], "backgroundColor": "#facc15bb", "borderColor": "#facc15", "borderWidth": 1, "borderRadius": 3}, {"label": "Batch 8", "data": [1785.2, 1210.6, 1210.0, 1108.0], "backgroundColor": "#4ade80bb", "borderColor": "#4ade80", "borderWidth": 1, "borderRadius": 3}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#d8d8e4", "font": {"size": 11}}}, "tooltip": {"mode": "index"}}, "scales": {"x": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}, "y": {"title": {"display": true, "text": "Output tok/s", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}}}};
+  var cfg = {"type": "bar", "data": {"labels": ["fp8 (H100)", "tensor-parallel (A100-)"], "datasets": [{"label": "Batch 1", "data": [232.0, 147.5], "backgroundColor": "#7c6af7bb", "borderColor": "#7c6af7", "borderWidth": 1, "borderRadius": 3}, {"label": "Batch 4", "data": [900.1, 562.3], "backgroundColor": "#facc15bb", "borderColor": "#facc15", "borderWidth": 1, "borderRadius": 3}, {"label": "Batch 8", "data": [1785.2, 1108.0], "backgroundColor": "#4ade80bb", "borderColor": "#4ade80", "borderWidth": 1, "borderRadius": 3}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#d8d8e4", "font": {"size": 11}}}, "tooltip": {"mode": "index"}}, "scales": {"x": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}, "y": {"title": {"display": true, "text": "Output tok/s", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}}}};
   cfg.options = cfg.options || {};
   cfg.options.maintainAspectRatio = false;
   new Chart(document.getElementById('chartBatchHighend'), cfg);
@@ -459,13 +427,14 @@ td strong { color: var(--text); }
 </script>
   </div>
   <div class="chart-card">
-    <h3>MFU% by Mode [H100, A100] <span style="font-size:0.68rem;font-weight:400">(purple=memory-bound · yellow=compute-bound)</span></h3>
+    <h3>MFU% by Mode [H100, A100]
+<span style="font-size:0.68rem;font-weight:400">(purple=memory-bound · yellow=compute-bound)</span></h3>
     <div class="chart-wrap" style="position:relative;height:280px">
   <canvas id="chartMfuHighend"></canvas>
 </div>
 <script>
 (function(){
-  var cfg = {"type": "bar", "data": {"labels": ["tensor-parallel (A100-)", "vllm (H100)", "fp8 (H100)", "kv-fp8 (H100)"], "datasets": [{"label": "MFU%", "data": [393.34, 73.36, 55.4, 37.33], "backgroundColor": ["#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb"], "borderColor": ["#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}]}, "options": {"indexAxis": "y", "responsive": true, "plugins": {"legend": {"display": false}}, "scales": {"x": {"max": 100, "title": {"display": true, "text": "MFU% (purple=memory-bound, yellow=compute-bound)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}, "y": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}}}};
+  var cfg = {"type": "bar", "data": {"labels": ["tensor-parallel (A100-)", "fp8 (H100)"], "datasets": [{"label": "MFU%", "data": [393.34, 55.4], "backgroundColor": ["#7c6af7bb", "#7c6af7bb"], "borderColor": ["#7c6af7", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}]}, "options": {"indexAxis": "y", "responsive": true, "plugins": {"legend": {"display": false}}, "scales": {"x": {"max": 100, "title": {"display": true, "text": "MFU% (purple=memory-bound, yellow=compute-bound)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}, "y": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}}}};
   cfg.options = cfg.options || {};
   cfg.options.maintainAspectRatio = false;
   new Chart(document.getElementById('chartMfuHighend'), cfg);
@@ -482,7 +451,7 @@ td strong { color: var(--text); }
 </div>
 <script>
 (function(){
-  var cfg = {"type": "bar", "data": {"labels": ["gptq", "continuous-batching", "vllm", "sglang", "flash-attn", "fp16", "torch-compile", "gptq-triton", "awq", "int8", "nf4"], "datasets": [{"label": "Batch 1", "data": [34.4, 29.6, 29.1, 28.6, 26.7, 26.5, 27.4, 12.8, 10.7, 10.2, 24.5], "backgroundColor": "#7c6af7bb", "borderColor": "#7c6af7", "borderWidth": 1, "borderRadius": 3}, {"label": "Batch 4", "data": [137.6, 113.0, 113.1, 107.8, 103.2, 103.0, 54.3, 52.1, 42.3, 37.1, 27.9], "backgroundColor": "#facc15bb", "borderColor": "#facc15", "borderWidth": 1, "borderRadius": 3}, {"label": "Batch 8", "data": [267.7, 223.0, 222.4, 220.3, 202.4, 201.4, 197.9, 102.3, 84.0, 74.3, 55.4], "backgroundColor": "#4ade80bb", "borderColor": "#4ade80", "borderWidth": 1, "borderRadius": 3}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#d8d8e4", "font": {"size": 11}}}, "tooltip": {"mode": "index"}}, "scales": {"x": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}, "y": {"title": {"display": true, "text": "Output tok/s", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}}}};
+  var cfg = {"type": "bar", "data": {"labels": ["gptq", "continuous-batching", "vllm", "fp16", "flash-attn", "torch-compile", "gptq-triton", "awq", "int8", "nf4"], "datasets": [{"label": "Batch 1", "data": [32.7, 29.6, 29.1, 26.7, 26.7, 27.4, 12.8, 10.7, 10.2, 25.5], "backgroundColor": "#7c6af7bb", "borderColor": "#7c6af7", "borderWidth": 1, "borderRadius": 3}, {"label": "Batch 4", "data": [131.8, 113.0, 113.1, 103.9, 103.2, 54.3, 52.1, 42.3, 37.1, 28.0], "backgroundColor": "#facc15bb", "borderColor": "#facc15", "borderWidth": 1, "borderRadius": 3}, {"label": "Batch 8", "data": [266.7, 223.0, 222.4, 203.4, 202.4, 197.9, 102.3, 84.0, 74.3, 55.7], "backgroundColor": "#4ade80bb", "borderColor": "#4ade80", "borderWidth": 1, "borderRadius": 3}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#d8d8e4", "font": {"size": 11}}}, "tooltip": {"mode": "index"}}, "scales": {"x": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}, "y": {"title": {"display": true, "text": "Output tok/s", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}}}};
   cfg.options = cfg.options || {};
   cfg.options.maintainAspectRatio = false;
   new Chart(document.getElementById('chartBatchA10G'), cfg);
@@ -490,13 +459,14 @@ td strong { color: var(--text); }
 </script>
   </div>
   <div class="chart-card">
-    <h3>MFU% by Mode [A10G] <span style="font-size:0.68rem;font-weight:400">(purple=memory-bound · yellow=compute-bound)</span></h3>
+    <h3>MFU% by Mode [A10G]
+<span style="font-size:0.68rem;font-weight:400">(purple=memory-bound · yellow=compute-bound)</span></h3>
     <div class="chart-wrap" style="position:relative;height:280px">
   <canvas id="chartMfuA10G"></canvas>
 </div>
 <script>
 (function(){
-  var cfg = {"type": "bar", "data": {"labels": ["spec-dec", "continuous-batching", "vllm", "sglang", "torch-compile", "flash-attn", "fp16", "awq", "gptq", "nf4", "int8", "gptq-triton"], "datasets": [{"label": "MFU%", "data": [83.47, 78.93, 77.6, 76.0, 72.27, 71.2, 70.67, 28.53, 22.2, 16.53, 13.33, 8.53], "backgroundColor": ["#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb"], "borderColor": ["#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}]}, "options": {"indexAxis": "y", "responsive": true, "plugins": {"legend": {"display": false}}, "scales": {"x": {"max": 100, "title": {"display": true, "text": "MFU% (purple=memory-bound, yellow=compute-bound)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}, "y": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}}}};
+  var cfg = {"type": "bar", "data": {"labels": ["spec-dec", "continuous-batching", "vllm", "torch-compile", "fp16", "flash-attn", "awq", "gptq", "nf4", "int8", "gptq-triton"], "datasets": [{"label": "MFU%", "data": [83.47, 78.93, 77.6, 72.27, 71.2, 71.2, 28.53, 22.2, 17.0, 13.33, 8.53], "backgroundColor": ["#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb", "#7c6af7bb"], "borderColor": ["#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}]}, "options": {"indexAxis": "y", "responsive": true, "plugins": {"legend": {"display": false}}, "scales": {"x": {"max": 100, "title": {"display": true, "text": "MFU% (purple=memory-bound, yellow=compute-bound)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}, "y": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}}}};
   cfg.options = cfg.options || {};
   cfg.options.maintainAspectRatio = false;
   new Chart(document.getElementById('chartMfuA10G'), cfg);
@@ -507,7 +477,8 @@ td strong { color: var(--text); }
 
 <div class="charts-2">
   <div class="chart-card">
-    <h3>TTFT vs Throughput <span style="font-size:0.68rem;font-weight:400">(A10G only — H100 vLLM path does not expose TTFT)</span></h3>
+    <h3>TTFT vs Throughput
+<span style="font-size:0.68rem;font-weight:400">(A10G only — H100 vLLM path does not expose TTFT)</span></h3>
     <p style="font-size:var(--fs-micro);color:var(--muted);margin-bottom:0.6rem">
       TTFT = Time to First Token — latency until the model starts streaming output (prefill phase only).
       Each point is one quantization mode. Lower-left = faster first token AND higher throughput.
@@ -517,7 +488,7 @@ td strong { color: var(--text); }
 </div>
 <script>
 (function(){
-  var cfg = {"type": "scatter", "data": {"datasets": [{"label": "A10G", "data": [{"x": 26.5, "y": 41.8}, {"x": 10.2, "y": 130.0}, {"x": 24.5, "y": 145.0}, {"x": 34.4, "y": 32.8}, {"x": 12.8, "y": 78.6}, {"x": 26.7, "y": 41.7}, {"x": 27.4, "y": 39.2}], "backgroundColor": "#60a5facc", "borderColor": "#60a5fa", "pointRadius": 7, "pointHoverRadius": 9}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#e0e0f0"}}, "tooltip": {"callbacks": {}}}, "scales": {"x": {"title": {"display": true, "text": "Batch-1 tok/s", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}, "y": {"title": {"display": true, "text": "TTFT (ms)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}}}};
+  var cfg = {"type": "scatter", "data": {"datasets": [{"label": "A10G", "data": [{"x": 26.7, "y": 41.5}, {"x": 10.2, "y": 130.0}, {"x": 25.5, "y": 144.3}, {"x": 32.7, "y": 33.2}, {"x": 12.8, "y": 78.6}, {"x": 26.7, "y": 41.7}, {"x": 27.4, "y": 39.2}], "backgroundColor": "#60a5facc", "borderColor": "#60a5fa", "pointRadius": 7, "pointHoverRadius": 9}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#e0e0f0"}}, "tooltip": {"callbacks": {}}}, "scales": {"x": {"title": {"display": true, "text": "Batch-1 tok/s", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}, "y": {"title": {"display": true, "text": "TTFT (ms)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}}}};
   cfg.options = cfg.options || {};
   cfg.options.maintainAspectRatio = false;
   new Chart(document.getElementById('chartTtft'), cfg);
@@ -527,7 +498,8 @@ td strong { color: var(--text); }
   <div class="chart-card">
     <h3>MMLU Accuracy + Perplexity <span style="font-size:0.68rem;font-weight:400">(HF modes only)</span></h3>
     <p style="font-size:var(--fs-micro);color:var(--muted);margin-bottom:0.6rem">
-      MMLU scores cluster near 74–94% — quantization barely affects accuracy at 4–8 bit.
+      MMLU scores on a 50-question CS/ML-domain subset (not the full benchmark; published general MMLU ≈66–68%).
+      Scores cluster 74–94% — quantization barely affects accuracy at 4–8 bit.
       Perplexity (lower = better) reveals subtle degradation: nf4 and gptq add ~0.2 ppl vs fp16.
     </p>
     <div class="chart-wrap" style="position:relative;height:240px">
@@ -551,7 +523,7 @@ td strong { color: var(--text); }
 </div>
 <script>
 (function(){
-  var cfg = {"type": "line", "data": {"labels": ["Batch 1", "Batch 4", "Batch 8"], "datasets": [{"label": "fp16 (A10G)", "data": [26.5, 103.0, 201.4], "borderColor": "#4ade80", "backgroundColor": "#4ade8033", "pointBackgroundColor": "#4ade80", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "int8 (A10G)", "data": [10.2, 37.1, 74.3], "borderColor": "#fb923c", "backgroundColor": "#fb923c33", "pointBackgroundColor": "#fb923c", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "nf4 (A10G)", "data": [24.5, 27.9, 55.4], "borderColor": "#facc15", "backgroundColor": "#facc1533", "pointBackgroundColor": "#facc15", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "gptq (A10G)", "data": [34.4, 137.6, 267.7], "borderColor": "#06b6d4", "backgroundColor": "#06b6d433", "pointBackgroundColor": "#06b6d4", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "vllm (A10G)", "data": [29.1, 113.1, 222.4], "borderColor": "#60a5fa", "backgroundColor": "#60a5fa33", "pointBackgroundColor": "#60a5fa", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "fp8 (H100)", "data": [232.0, 900.1, 1785.2], "borderColor": "#f472b6", "backgroundColor": "#f472b633", "pointBackgroundColor": "#f472b6", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "kv-fp8 (H100)", "data": [156.3, 610.6, 1210.0], "borderColor": "#7c6af7", "backgroundColor": "#7c6af733", "pointBackgroundColor": "#7c6af7", "pointRadius": 5, "tension": 0.2, "spanGaps": true}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#d8d8e4", "font": {"size": 10}}}}, "scales": {"x": {"ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}, "y": {"title": {"display": true, "text": "Output tok/s", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}}}};
+  var cfg = {"type": "line", "data": {"labels": ["Batch 1", "Batch 4", "Batch 8"], "datasets": [{"label": "fp16 (A10G)", "data": [26.7, 103.9, 203.4], "borderColor": "#4ade80", "backgroundColor": "#4ade8033", "pointBackgroundColor": "#4ade80", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "int8 (A10G)", "data": [10.2, 37.1, 74.3], "borderColor": "#fb923c", "backgroundColor": "#fb923c33", "pointBackgroundColor": "#fb923c", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "nf4 (A10G)", "data": [25.5, 28.0, 55.7], "borderColor": "#facc15", "backgroundColor": "#facc1533", "pointBackgroundColor": "#facc15", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "gptq (A10G)", "data": [32.7, 131.8, 266.7], "borderColor": "#06b6d4", "backgroundColor": "#06b6d433", "pointBackgroundColor": "#06b6d4", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "vllm (A10G)", "data": [29.1, 113.1, 222.4], "borderColor": "#60a5fa", "backgroundColor": "#60a5fa33", "pointBackgroundColor": "#60a5fa", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "fp8 (H100)", "data": [232.0, 900.1, 1785.2], "borderColor": "#f472b6", "backgroundColor": "#f472b633", "pointBackgroundColor": "#f472b6", "pointRadius": 5, "tension": 0.2, "spanGaps": true}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#d8d8e4", "font": {"size": 10}}}}, "scales": {"x": {"ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}, "y": {"title": {"display": true, "text": "Output tok/s", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1c1c2e"}}}}};
   cfg.options = cfg.options || {};
   cfg.options.maintainAspectRatio = false;
   new Chart(document.getElementById('chartScale'), cfg);
@@ -563,36 +535,111 @@ td strong { color: var(--text); }
   <strong>Memory-bandwidth bound:</strong> All 8B inference on these GPUs at batch ≤ 8 is
   memory-bandwidth-bound (purple in MFU charts). The bottleneck is loading model weights from HBM
   on every decode step — not attention. H100's HBM3 (3.35 TB/s vs A10G's 0.60 TB/s) explains
-  the 8× throughput difference at nearly identical MFU%.
+  the 8x throughput difference at nearly identical MFU%.
+</div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<section id="energy" class="section">
+<div class="section-title">Energy Efficiency — Tokens per Joule</div>
+<p class="section-sub">
+  Measured via nvidia-smi power polling during inference. Purple bars = size-sweep configs; blue = standard 8B modes.
+  Higher tokens/joule = more compute per watt.
+</p>
+<div class="chart-card">
+  <h3>Tokens / Joule + Mean Power Draw (W) <span style="font-size:0.68rem;font-weight:400">(modes with power data only)</span></h3>
+  <p style="font-size:var(--fs-micro);color:var(--muted);margin-bottom:0.6rem">
+    3B-fp16 leads at 0.32 tok/J — smaller weights load faster per decode step, spending less energy per token.
+    GPTQ (0.27) is the most efficient full 8B mode: INT4 weights halve bandwidth pressure vs fp16.
+  </p>
+  <div class="chart-wrap" style="position:relative;height:280px">
+  <canvas id="chartEnergy"></canvas>
+</div>
+<script>
+(function(){
+  var cfg = {"type": "bar", "data": {"labels": ["3B-fp16", "gptq", "nf4", "fp16", "8B-nf4", "8B-fp16"], "datasets": [{"label": "Tokens / joule", "data": [0.32, 0.27, 0.19, 0.18, 0.18, 0.18], "backgroundColor": ["#7c6af7bb", "#60a5fabb", "#60a5fabb", "#60a5fabb", "#7c6af7bb", "#7c6af7bb"], "borderColor": ["#7c6af7", "#60a5fa", "#60a5fa", "#60a5fa", "#7c6af7", "#7c6af7"], "borderWidth": 1, "borderRadius": 3, "yAxisID": "yLeft", "order": 2}, {"label": "Mean watts", "data": [146.2, 122.9, 135.0, 148.5, 135.5, 148.4], "type": "line", "borderColor": "#fb923c", "backgroundColor": "#fb923c44", "pointBackgroundColor": "#fb923c", "pointRadius": 5, "yAxisID": "yRight", "order": 1}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#e0e0f0"}}}, "scales": {"x": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}}, "yLeft": {"type": "linear", "position": "left", "title": {"display": true, "text": "Tokens / joule \u2191", "color": "#60a5fa"}, "ticks": {"color": "#60a5fa"}, "grid": {"color": "#1c1c2e"}}, "yRight": {"type": "linear", "position": "right", "title": {"display": true, "text": "Mean power (W)", "color": "#fb923c"}, "ticks": {"color": "#fb923c"}, "grid": {"drawOnChartArea": false}}}}};
+  cfg.options = cfg.options || {};
+  cfg.options.maintainAspectRatio = false;
+  new Chart(document.getElementById('chartEnergy'), cfg);
+})();
+</script>
+</div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<section id="sizeswp" class="section">
+<div class="section-title">Size vs. Quantization Sweep</div>
+<p class="section-sub">
+  Compares model sizes at roughly equal VRAM (~6–8 GB). The key question: is a smaller model at fp16
+  better than a larger model quantized to fit the same budget?
+</p>
+<div class="card">
+<table>
+<thead><tr>
+  <th>Config <span class="tip" data-tip="Model size and precision. Equal-VRAM pairs reveal the size vs. quant tradeoff.">ⓘ</span></th>
+  <th class="right">Batch-1 <span class="tip" data-tip="Output tok/s with a single request.">ⓘ</span></th>
+  <th class="right">Batch-8 <span class="tip" data-tip="Output tok/s across 8 simultaneous requests.">ⓘ</span></th>
+  <th class="right">MMLU <span class="tip" data-tip="Accuracy on 50-question CS/ML-domain subset.">ⓘ</span></th>
+  <th class="right">VRAM <span class="tip" data-tip="Peak GPU memory for model weights (MB).">ⓘ</span></th>
+  <th class="right">Tok / J <span class="tip" data-tip="Tokens generated per joule of GPU energy. Higher = more efficient.">ⓘ</span></th>
+</tr></thead>
+<tbody><tr>
+<td><strong>3B-fp16</strong></td>
+<td class="right">47</td>
+<td class="right">365</td>
+<td class="right">64%</td>
+<td class="right">6,224 MB</td>
+<td class="right best">0.32</td>
+</tr><tr>
+<td><strong>8B-fp16</strong></td>
+<td class="right">27</td>
+<td class="right">203</td>
+<td class="right">74%</td>
+<td class="right">17,320 MB</td>
+<td class="right ">0.18</td>
+</tr><tr>
+<td><strong>8B-nf4</strong></td>
+<td class="right">22</td>
+<td class="right">55</td>
+<td class="right">74%</td>
+<td class="right">7,787 MB</td>
+<td class="right ">0.18</td>
+</tr></tbody>
+</table>
+</div>
+<div class="insight">
+  <strong>3B-fp16 vs 8B-nf4 at equal VRAM (~6–8 GB):</strong>
+  3B-fp16 is ~2× faster and 78% more energy-efficient but has 15% lower MMLU.
+  Choose 3B for latency/energy-constrained workloads; 8B-nf4 when answer quality matters.
 </div>
 </section>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
 <section id="gateway" class="section">
 <div class="section-title">Gateway — Tier Benchmark</div>
-<p class="section-sub">10 iterations × 3 prompts per tier · Backend: OpenAI API</p>
+<p class="section-sub">10 iterations x 3 prompts per tier · Backend: OpenAI API</p>
 <div class="charts-2">
-  <div class="card"><table><thead><tr><th>Tier <span class="tip" data-tip="Routing tier — determines model and cost. cheap=fast/cheap, balanced=general, premium=highest quality.">ⓘ</span></th><th class="right">Requests <span class="tip" data-tip="Number of sampled requests used to compute these percentiles.">ⓘ</span></th><th class="right">Mean (ms) <span class="tip" data-tip="Average end-to-end latency across all requests including long-tail outliers.">ⓘ</span></th><th class="right">P50 (ms) <span class="tip" data-tip="Median latency — what a typical user experiences. Half of requests are faster than this.">ⓘ</span></th><th class="right">P95 (ms) <span class="tip" data-tip="95th-percentile latency — worst case for 95% of users. Typical SLA target. Gap vs P50 reveals tail variance.">ⓘ</span></th><th class="right">Cost / req <span class="tip" data-tip="Mean estimated API cost per request based on token usage and provider pricing.">ⓘ</span></th></tr></thead><tbody><tr>
+  <div class="card"><table><thead><tr><th>Tier <span class="tip" data-tip="Routing tier — determines model and cost. cheap=fast/cheap, balanced=general, premium=best quality.">ⓘ</span></th><th class="right">Requests <span class="tip" data-tip="Number of sampled requests used to compute these percentiles.">ⓘ</span></th><th class="right">Mean (ms) <span class="tip" data-tip="Average end-to-end latency across all requests including long-tail outliers.">ⓘ</span></th><th class="right">P50 (ms) <span class="tip" data-tip="Median latency — what a typical user experiences. Half of requests are faster than this.">ⓘ</span></th><th class="right">P95 (ms) <span class="tip" data-tip="95th-percentile latency — worst case for 95% of users. Typical SLA target. Gap vs P50 reveals tail variance.">ⓘ</span></th><th class="right">Cost / req <span class="tip" data-tip="Mean estimated API cost per request based on token usage and provider pricing.">ⓘ</span></th></tr></thead><tbody><tr>
 <td><strong style="color:#4ade80">cheap</strong></td>
 <td class="right dim">30</td>
-<td class="right">3,502</td>
-<td class="right">2,048</td>
-<td class="right">7,874</td>
-<td class="right">$0.000672</td>
+<td class="right">4,182</td>
+<td class="right">2,246</td>
+<td class="right">9,897</td>
+<td class="right">$0.000701</td>
 </tr><tr>
 <td><strong style="color:#facc15">balanced</strong></td>
 <td class="right dim">30</td>
-<td class="right">9,682</td>
-<td class="right">5,486</td>
-<td class="right">22,646</td>
-<td class="right">$0.004211</td>
+<td class="right">8,972</td>
+<td class="right">5,741</td>
+<td class="right">18,775</td>
+<td class="right">$0.004024</td>
 </tr><tr>
 <td><strong style="color:#06b6d4">premium</strong></td>
 <td class="right dim">30</td>
-<td class="right">16,041</td>
-<td class="right">9,909</td>
-<td class="right">31,495</td>
-<td class="right">$0.047685</td>
+<td class="right">11,129</td>
+<td class="right">5,046</td>
+<td class="right">28,148</td>
+<td class="right">$0.004911</td>
 </tr></tbody></table></div>
   <div class="chart-card">
     <h3>Latency by Tier (ms)</h3>
@@ -601,7 +648,7 @@ td strong { color: var(--text); }
 </div>
 <script>
 (function(){
-  var cfg = {"type": "bar", "data": {"labels": ["cheap", "balanced", "premium"], "datasets": [{"label": "Mean", "data": [3502.266666666667, 9681.766666666666, 16040.7], "backgroundColor": ["#4ade80e5", "#facc15e5", "#7c6af7e5"], "borderColor": ["#4ade80", "#facc15", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}, {"label": "P50", "data": [2048.0, 5486.0, 9909.0], "backgroundColor": ["#4ade80a5", "#facc15a5", "#7c6af7a5"], "borderColor": ["#4ade80", "#facc15", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}, {"label": "P95", "data": [7874.0, 22646.0, 31495.0], "backgroundColor": ["#4ade8066", "#facc1566", "#7c6af766"], "borderColor": ["#4ade80", "#facc15", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#e0e0f0"}}, "tooltip": {"mode": "index"}}, "scales": {"x": {"ticks": {"color": "#606088"}, "grid": {"color": "#1e1a3a"}}, "y": {"title": {"display": true, "text": "Latency (ms)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1e1a3a"}}}}};
+  var cfg = {"type": "bar", "data": {"labels": ["cheap", "balanced", "premium"], "datasets": [{"label": "Mean", "data": [4182.366666666667, 8971.633333333333, 11129.166666666666], "backgroundColor": ["#4ade80e5", "#facc15e5", "#7c6af7e5"], "borderColor": ["#4ade80", "#facc15", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}, {"label": "P50", "data": [2246.0, 5741.0, 5046.0], "backgroundColor": ["#4ade80a5", "#facc15a5", "#7c6af7a5"], "borderColor": ["#4ade80", "#facc15", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}, {"label": "P95", "data": [9897.0, 18775.0, 28148.0], "backgroundColor": ["#4ade8066", "#facc1566", "#7c6af766"], "borderColor": ["#4ade80", "#facc15", "#7c6af7"], "borderWidth": 1, "borderRadius": 3}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#e0e0f0"}}, "tooltip": {"mode": "index"}}, "scales": {"x": {"ticks": {"color": "#606088"}, "grid": {"color": "#1e1a3a"}}, "y": {"title": {"display": true, "text": "Latency (ms)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1e1a3a"}}}}};
   cfg.options = cfg.options || {};
   cfg.options.maintainAspectRatio = false;
   new Chart(document.getElementById('chartGateway'), cfg);
@@ -610,7 +657,7 @@ td strong { color: var(--text); }
   </div>
 </div>
 <div class="insight">
-  <strong>Cheap tier P50→P95 spread is 4.5×</strong> (2,204ms → 9,897ms) — high variance
+  <strong>Cheap tier P50→P95 spread is 4.5x</strong> (2,204ms → 9,897ms) — high variance
   from OpenAI shared API capacity. Balanced/premium show similar variance. At c=20 concurrency,
   balanced hits 22% errors and premium hits 50% — OpenAI RPM rate limits, not model latency.
 </div>
@@ -673,98 +720,98 @@ td strong { color: var(--text); }
 <td>cheap</td>
 <td class="right">1</td>
 <td class="right">0.58</td>
-<td class="right">1,665</td>
-<td class="right">2,694</td>
-<td class="right">3,275</td>
+<td class="right">1,661</td>
+<td class="right">2,662</td>
+<td class="right">4,450</td>
 <td class="right dim">0%</td>
 </tr><tr>
 <td>cheap</td>
 <td class="right">5</td>
-<td class="right">2.24</td>
-<td class="right">1,557</td>
-<td class="right">2,681</td>
-<td class="right">6,365</td>
+<td class="right">2.15</td>
+<td class="right">1,566</td>
+<td class="right">2,824</td>
+<td class="right">9,826</td>
 <td class="right dim">0%</td>
 </tr><tr>
 <td>cheap</td>
 <td class="right">10</td>
-<td class="right">6.67</td>
-<td class="right">1,543</td>
-<td class="right">3,070</td>
-<td class="right">3,600</td>
-<td class="right warn">26%</td>
+<td class="right">5.15</td>
+<td class="right">1,567</td>
+<td class="right">2,648</td>
+<td class="right">3,424</td>
+<td class="right dim">0%</td>
 </tr><tr>
 <td>cheap</td>
 <td class="right">20</td>
-<td class="right">36.13</td>
-<td class="right">1,382</td>
-<td class="right">1,382</td>
-<td class="right">1,382</td>
-<td class="right warn">96%</td>
+<td class="right">8.42</td>
+<td class="right">1,690</td>
+<td class="right">2,858</td>
+<td class="right">3,079</td>
+<td class="right dim">0%</td>
 </tr><tr>
 <td>balanced</td>
 <td class="right">1</td>
-<td class="right">0.26</td>
-<td class="right">3,176</td>
-<td class="right">7,587</td>
-<td class="right">7,783</td>
+<td class="right">0.21</td>
+<td class="right">3,196</td>
+<td class="right">9,255</td>
+<td class="right">27,913</td>
 <td class="right dim">0%</td>
 </tr><tr>
 <td>balanced</td>
 <td class="right">5</td>
-<td class="right">1.20</td>
-<td class="right">3,234</td>
-<td class="right">7,878</td>
-<td class="right">9,260</td>
+<td class="right">1.04</td>
+<td class="right">3,336</td>
+<td class="right">8,192</td>
+<td class="right">17,901</td>
 <td class="right dim">0%</td>
 </tr><tr>
 <td>balanced</td>
 <td class="right">10</td>
-<td class="right">2.12</td>
-<td class="right">3,491</td>
-<td class="right">7,556</td>
-<td class="right">12,172</td>
+<td class="right">1.94</td>
+<td class="right">3,332</td>
+<td class="right">7,659</td>
+<td class="right">19,333</td>
 <td class="right dim">0%</td>
 </tr><tr>
 <td>balanced</td>
 <td class="right">20</td>
-<td class="right">6.08</td>
-<td class="right">3,279</td>
-<td class="right">7,464</td>
-<td class="right">8,084</td>
-<td class="right warn">44%</td>
+<td class="right">1.87</td>
+<td class="right">3,460</td>
+<td class="right">16,780</td>
+<td class="right">21,583</td>
+<td class="right warn">22%</td>
 </tr><tr>
 <td>premium</td>
 <td class="right">1</td>
-<td class="right">0.14</td>
-<td class="right">7,731</td>
-<td class="right">11,638</td>
-<td class="right">13,764</td>
+<td class="right">0.20</td>
+<td class="right">3,471</td>
+<td class="right">6,345</td>
+<td class="right">68,419</td>
 <td class="right dim">0%</td>
 </tr><tr>
 <td>premium</td>
 <td class="right">5</td>
-<td class="right">0.68</td>
-<td class="right">7,418</td>
-<td class="right">10,461</td>
-<td class="right">10,754</td>
+<td class="right">1.21</td>
+<td class="right">3,369</td>
+<td class="right">7,216</td>
+<td class="right">7,608</td>
 <td class="right dim">0%</td>
 </tr><tr>
 <td>premium</td>
 <td class="right">10</td>
-<td class="right">1.26</td>
-<td class="right">7,330</td>
-<td class="right">10,815</td>
-<td class="right">11,822</td>
+<td class="right">2.27</td>
+<td class="right">3,290</td>
+<td class="right">6,980</td>
+<td class="right">8,931</td>
 <td class="right dim">0%</td>
 </tr><tr>
 <td>premium</td>
 <td class="right">20</td>
-<td class="right">2.04</td>
-<td class="right">7,599</td>
-<td class="right">12,386</td>
-<td class="right">13,304</td>
-<td class="right warn">8%</td>
+<td class="right">6.80</td>
+<td class="right">3,654</td>
+<td class="right">6,128</td>
+<td class="right">6,280</td>
+<td class="right warn">50%</td>
 </tr></tbody></table></div>
 <div class="chart-card">
   <h3>Throughput (req/s) vs Concurrency</h3>
@@ -773,7 +820,7 @@ td strong { color: var(--text); }
 </div>
 <script>
 (function(){
-  var cfg = {"type": "line", "data": {"labels": ["1", "5", "10", "20"], "datasets": [{"label": "cheap", "data": [0.58, 2.24, 6.67, 36.13], "borderColor": "#4ade80", "backgroundColor": "#4ade8033", "pointBackgroundColor": "#4ade80", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "balanced", "data": [0.26, 1.2, 2.12, 6.08], "borderColor": "#facc15", "backgroundColor": "#facc1533", "pointBackgroundColor": "#facc15", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "premium", "data": [0.14, 0.68, 1.26, 2.04], "borderColor": "#06b6d4", "backgroundColor": "#06b6d433", "pointBackgroundColor": "#06b6d4", "pointRadius": 5, "tension": 0.2, "spanGaps": true}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#e0e0f0"}}}, "scales": {"x": {"title": {"display": true, "text": "Concurrency (N)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1e1a3a"}}, "y": {"title": {"display": true, "text": "Throughput (req/s)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1e1a3a"}}}}};
+  var cfg = {"type": "line", "data": {"labels": ["1", "5", "10", "20"], "datasets": [{"label": "cheap", "data": [0.58, 2.15, 5.15, 8.42], "borderColor": "#4ade80", "backgroundColor": "#4ade8033", "pointBackgroundColor": "#4ade80", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "balanced", "data": [0.21, 1.04, 1.94, 1.87], "borderColor": "#facc15", "backgroundColor": "#facc1533", "pointBackgroundColor": "#facc15", "pointRadius": 5, "tension": 0.2, "spanGaps": true}, {"label": "premium", "data": [0.2, 1.21, 2.27, 6.8], "borderColor": "#06b6d4", "backgroundColor": "#06b6d433", "pointBackgroundColor": "#06b6d4", "pointRadius": 5, "tension": 0.2, "spanGaps": true}]}, "options": {"responsive": true, "plugins": {"legend": {"labels": {"color": "#e0e0f0"}}}, "scales": {"x": {"title": {"display": true, "text": "Concurrency (N)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1e1a3a"}}, "y": {"title": {"display": true, "text": "Throughput (req/s)", "color": "#606088"}, "ticks": {"color": "#606088"}, "grid": {"color": "#1e1a3a"}}}}};
   cfg.options = cfg.options || {};
   cfg.options.maintainAspectRatio = false;
   new Chart(document.getElementById('chartLoadTest'), cfg);
@@ -795,7 +842,7 @@ td strong { color: var(--text); }
   Queue buildup is visible when λ exceeds server capacity.
 </p>
 <div class="charts-2">
-  <div class="card"><table><thead><tr><th>Tier <span class="tip" data-tip="Gateway tier under test.">ⓘ</span></th><th class="right">λ (rps) <span class="tip" data-tip="Target Poisson arrival rate in requests per second.">ⓘ</span></th><th class="right">Achieved <span class="tip" data-tip="Actual successful throughput — diverges from λ when saturated.">ⓘ</span></th><th class="right">P50 (ms) <span class="tip" data-tip="Median latency. Stays flat when unsaturated; rises slowly after knee.">ⓘ</span></th><th class="right">P99 (ms) <span class="tip" data-tip="99th-percentile latency. Explodes at the saturation knee — the key signal.">ⓘ</span></th><th class="right">Queue depth <span class="tip" data-tip="Mean in-flight requests reconstructed from fire/complete event timeline (Little's Law validation).">ⓘ</span></th><th>Saturated <span class="tip" data-tip="YES when P99 > 3×P50 (queuing signature) OR achieved < 85% of λ (throughput plateau).">ⓘ</span></th></tr></thead><tbody><tr>
+  <div class="card"><table><thead><tr><th>Tier <span class="tip" data-tip="Gateway tier under test.">ⓘ</span></th><th class="right">λ (rps) <span class="tip" data-tip="Target Poisson arrival rate in requests per second.">ⓘ</span></th><th class="right">Achieved <span class="tip" data-tip="Actual successful throughput — diverges from λ when saturated.">ⓘ</span></th><th class="right">P50 (ms) <span class="tip" data-tip="Median latency. Stays flat when unsaturated; rises slowly after knee.">ⓘ</span></th><th class="right">P99 (ms) <span class="tip" data-tip="99th-percentile latency. Explodes at the saturation knee — the key signal.">ⓘ</span></th><th class="right">Queue depth <span class="tip" data-tip="Mean in-flight requests reconstructed from fire/complete event timeline (Little's Law validation).">ⓘ</span></th><th>Saturated <span class="tip" data-tip="YES when P99 > 3xP50 (queuing signature) OR achieved < 85% of lambda (throughput plateau).">ⓘ</span></th></tr></thead><tbody><tr>
 <td>cheap</td>
 <td class="right">0.50</td>
 <td class="right">0.67</td>
@@ -888,7 +935,7 @@ td strong { color: var(--text); }
 
 <div class="insight">
   <strong>Attention is only ~1% of GPU time</strong> on 8B models at short context — matmul
-  (weight loading) dominates at 44–58%. This confirms memory-bandwidth as the binding constraint,
+  (weight loading) dominates at 44-58%. This confirms memory-bandwidth as the binding constraint,
   not attention complexity. <strong>int8/nf4 add dequantize kernels</strong> absent in fp16 —
   the overhead of converting compressed weights back to float16 before compute explains why
   quantization doesn't linearly reduce latency despite halving VRAM.

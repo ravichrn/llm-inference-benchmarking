@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
+
+import pytest
 
 from llm_inference_benchmarking.classifier_router import (
     MIN_TRAINING_SAMPLES,
     AdaptiveRouter,
     LogisticClassifier,
+    _downgrade_tier,
     _ledger_row_to_features,
     _prompt_to_features,
+    retrain_from_judge_scores,
 )
 
 # ---------------------------------------------------------------------------
@@ -207,6 +212,147 @@ def test_policy_falls_back_to_heuristics_when_no_classifier(tmp_path, monkeypatc
 
     # Reset singleton after test
     policy_mod._adaptive_router = None
+
+
+# ---------------------------------------------------------------------------
+# _power_metrics (tested via the pure helper, imported lazily to avoid modal)
+# ---------------------------------------------------------------------------
+
+
+def _get_power_metrics():
+    """Import _power_metrics without triggering the modal top-level import.
+
+    Stubs modal only for this import, then restores sys.modules so other tests
+    that check for a real modal import are not affected.
+    """
+    import importlib
+    import sys
+    import unittest.mock as mock
+
+    modal_was_present = "modal" in sys.modules
+    modal_orig = sys.modules.get("modal")
+    mb_was_present = "llm_inference_benchmarking.modal_benchmark" in sys.modules
+    mb_orig = sys.modules.get("llm_inference_benchmarking.modal_benchmark")
+
+    try:
+        if not modal_was_present:
+            sys.modules["modal"] = mock.MagicMock()
+        mod = importlib.import_module("llm_inference_benchmarking.modal_benchmark")
+        return mod._power_metrics
+    finally:
+        # Restore original state so the mock doesn't leak into other tests
+        if not modal_was_present:
+            del sys.modules["modal"]
+        elif modal_orig is not None:
+            sys.modules["modal"] = modal_orig
+        if not mb_was_present:
+            sys.modules.pop("llm_inference_benchmarking.modal_benchmark", None)
+        elif mb_orig is not None:
+            sys.modules["llm_inference_benchmarking.modal_benchmark"] = mb_orig
+
+
+def test_power_metrics_basic():
+    _power_metrics = _get_power_metrics()
+    samples = [100.0, 120.0, 110.0]
+    result = _power_metrics(samples, output_tokens=1000, elapsed_s=10.0)
+    assert result["mean_power_w"] == pytest.approx(110.0, abs=0.1)
+    assert result["total_energy_j"] == pytest.approx(1100.0, abs=0.1)
+    assert result["tokens_per_joule"] == pytest.approx(1000 / 1100.0, rel=0.01)
+
+
+def test_power_metrics_empty_samples():
+    _power_metrics = _get_power_metrics()
+    result = _power_metrics([], output_tokens=100, elapsed_s=5.0)
+    assert result == {}
+
+
+def test_power_metrics_zero_elapsed():
+    _power_metrics = _get_power_metrics()
+    result = _power_metrics([100.0], output_tokens=100, elapsed_s=0.0)
+    assert result["tokens_per_joule"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _downgrade_tier
+# ---------------------------------------------------------------------------
+
+
+def test_downgrade_tier_premium_to_balanced():
+    assert _downgrade_tier("premium") == "balanced"
+
+
+def test_downgrade_tier_balanced_to_cheap():
+    assert _downgrade_tier("balanced") == "cheap"
+
+
+def test_downgrade_tier_cheap_stays_cheap():
+    assert _downgrade_tier("cheap") == "cheap"
+
+
+# ---------------------------------------------------------------------------
+# retrain_from_judge_scores
+# ---------------------------------------------------------------------------
+
+
+def test_retrain_from_judge_scores_no_files(tmp_path):
+    n = retrain_from_judge_scores(eval_dir=tmp_path, db_path=tmp_path / "test.db")
+    assert n == 0
+
+
+def test_retrain_from_judge_scores_inserts_rows(tmp_path):
+    eval_file = tmp_path / "eval_test.json"
+    eval_file.write_text(
+        json.dumps(
+            {
+                "tier": "balanced",
+                "results": [
+                    {"score": 9, "latency_ms": 500},
+                    {"score": 8, "latency_ms": 300},
+                    {"score": 4, "latency_ms": 200},  # below threshold → downgraded to cheap
+                ],
+            }
+        )
+    )
+    db = tmp_path / "test.db"
+    n = retrain_from_judge_scores(eval_dir=tmp_path, min_score=7.0, db_path=db)
+    assert n == 3
+
+    import sqlite3
+
+    con = sqlite3.connect(str(db))
+    rows = con.execute("SELECT tier FROM gateway_usage ORDER BY rowid").fetchall()
+    con.close()
+    tiers = [r[0] for r in rows]
+    assert tiers.count("balanced") == 2  # score >= 7 → keep tier
+    assert tiers.count("cheap") == 1  # score 4 < 7 → downgraded
+
+
+def test_retrain_from_judge_scores_skips_unknown_tier(tmp_path):
+    eval_file = tmp_path / "eval_test.json"
+    eval_file.write_text(
+        json.dumps(
+            {
+                "tier": "unknown_tier",
+                "results": [{"score": 9, "latency_ms": 100}],
+            }
+        )
+    )
+    n = retrain_from_judge_scores(eval_dir=tmp_path, db_path=tmp_path / "test.db")
+    assert n == 0
+
+
+def test_retrain_from_judge_scores_skips_missing_score(tmp_path):
+    eval_file = tmp_path / "eval_test.json"
+    eval_file.write_text(
+        json.dumps(
+            {
+                "tier": "cheap",
+                "results": [{"latency_ms": 100}],  # no score field
+            }
+        )
+    )
+    n = retrain_from_judge_scores(eval_dir=tmp_path, db_path=tmp_path / "test.db")
+    assert n == 0
 
 
 # ---------------------------------------------------------------------------

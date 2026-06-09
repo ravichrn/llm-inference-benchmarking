@@ -242,6 +242,7 @@ def _chart_batch_throughput(results: list[dict], gpu_keys: list[str] | None = No
         r
         for r in results
         if r.get("quant_mode") not in ("kv-analysis", "spec-dec")
+        and not r.get("size_sweep")
         and (_b(r, 1) or _b(r, 8))
         and (not gpu_keys or any(k in r.get("_gpu", "") for k in gpu_keys))
     ]
@@ -288,6 +289,8 @@ def _chart_batch_throughput(results: list[dict], gpu_keys: list[str] | None = No
 def _chart_ttft_vs_throughput(results: list[dict]) -> str:
     pts = []
     for r in results:
+        if r.get("size_sweep"):
+            continue
         lat = r.get("latency") or {}
         ttft = lat.get("ttft_mean_ms")
         tps = _b(r, 1)
@@ -345,6 +348,7 @@ def _chart_mfu(results: list[dict], gpu_keys: list[str] | None = None) -> str:
         for r in results
         if _mfu(r) is not None
         and r.get("quant_mode") not in ("kv-analysis",)
+        and not r.get("size_sweep")
         and (not gpu_keys or any(k in r.get("_gpu", "") for k in gpu_keys))
     ]
     rows.sort(key=lambda x: -(x[1] or 0))
@@ -394,11 +398,14 @@ def _chart_mfu(results: list[dict], gpu_keys: list[str] | None = None) -> str:
 
 
 def _chart_mmlu_ppl(results: list[dict]) -> str:
-    # Only modes with both MMLU and perplexity
+    # Only modes with both MMLU and perplexity; exclude size-sweep (handled in its own section)
     rows = [
         r
         for r in results
-        if _mmlu(r) is not None and _ppl(r) is not None and r.get("quant_mode") not in ("kv-analysis",)
+        if _mmlu(r) is not None
+        and _ppl(r) is not None
+        and r.get("quant_mode") not in ("kv-analysis",)
+        and not r.get("size_sweep")
     ]
     rows.sort(key=lambda r: -(_mmlu(r) or 0))
 
@@ -462,6 +469,7 @@ def _chart_mmlu_ppl(results: list[dict]) -> str:
 
 
 def _chart_batch_scaling(results: list[dict]) -> str:
+    # size-sweep entries use quant_mode "size-sweep/..." so won't match key_modes; no extra filter needed
     key_modes = ["fp16", "int8", "nf4", "gptq", "vllm", "fp8", "kv-fp8"]
     palette = [_C["green"], _C["orange"], _C["yellow"], _C["cyan"], _C["blue"], _C["pink"], _C["purple"]]
     datasets = []
@@ -499,6 +507,73 @@ def _chart_batch_scaling(results: list[dict]) -> str:
                         "title": {"display": True, "text": "Output tok/s", "color": "#606088"},
                         "ticks": {"color": "#606088"},
                         "grid": {"color": "#1c1c2e"},
+                    },
+                },
+            },
+        }
+    )
+
+
+def _chart_energy(results: list[dict]) -> str:
+    rows = [
+        r
+        for r in results
+        if (r.get("power") or {}).get("tokens_per_joule") is not None and r.get("quant_mode") not in ("kv-analysis",)
+    ]
+    rows.sort(key=lambda r: -((r.get("power") or {}).get("tokens_per_joule") or 0))
+
+    labels = [r.get("size_sweep_label") or r.get("quant_mode", "?") for r in rows]
+    tok_j = [(r.get("power") or {}).get("tokens_per_joule") for r in rows]
+    watts = [(r.get("power") or {}).get("mean_power_w") for r in rows]
+    colors = [_C["purple"] if r.get("size_sweep") else _C["blue"] for r in rows]
+
+    return json.dumps(
+        {
+            "type": "bar",
+            "data": {
+                "labels": labels,
+                "datasets": [
+                    {
+                        "label": "Tokens / joule",
+                        "data": tok_j,
+                        "backgroundColor": [c + "bb" for c in colors],
+                        "borderColor": colors,
+                        "borderWidth": 1,
+                        "borderRadius": 3,
+                        "yAxisID": "yLeft",
+                        "order": 2,
+                    },
+                    {
+                        "label": "Mean watts",
+                        "data": watts,
+                        "type": "line",
+                        "borderColor": _C["orange"],
+                        "backgroundColor": _C["orange"] + "44",
+                        "pointBackgroundColor": _C["orange"],
+                        "pointRadius": 5,
+                        "yAxisID": "yRight",
+                        "order": 1,
+                    },
+                ],
+            },
+            "options": {
+                "responsive": True,
+                "plugins": {"legend": {"labels": {"color": "#e0e0f0"}}},
+                "scales": {
+                    "x": {"ticks": {"color": "#606088", "font": {"size": 10}}, "grid": {"color": "#1c1c2e"}},
+                    "yLeft": {
+                        "type": "linear",
+                        "position": "left",
+                        "title": {"display": True, "text": "Tokens / joule ↑", "color": _C["blue"]},
+                        "ticks": {"color": _C["blue"]},
+                        "grid": {"color": "#1c1c2e"},
+                    },
+                    "yRight": {
+                        "type": "linear",
+                        "position": "right",
+                        "title": {"display": True, "text": "Mean power (W)", "color": _C["orange"]},
+                        "ticks": {"color": _C["orange"]},
+                        "grid": {"drawOnChartArea": False},
                     },
                 },
             },
@@ -722,8 +797,25 @@ def _best_cell(val, is_best: bool, fmt_d: int = 0) -> str:
     return f'<td class="right {"best" if is_best else ""}">{s}</td>'
 
 
+def _size_sweep_row(r: dict, best_tok_j: float) -> str:
+    """Render one <tr> for the size-vs-quant table."""
+    label = r.get("size_sweep_label", r.get("quant_mode", "?"))
+    tok_j = (r.get("power") or {}).get("tokens_per_joule", 0)
+    best_cls = "best" if tok_j == best_tok_j else ""
+    return (
+        f"<tr>"
+        f"<td><strong>{label}</strong></td>"
+        f'<td class="right">{_fmt(_b(r, 1), 0)}</td>'
+        f'<td class="right">{_fmt(_b(r, 8), 0)}</td>'
+        f'<td class="right">{_fmt((_mmlu(r) or 0) * 100, 0)}%</td>'
+        f'<td class="right">{_fmt((r.get("memory") or {}).get("model_weights_mb"), 0)} MB</td>'
+        f'<td class="right {best_cls}">{_fmt(tok_j if tok_j else None, 2)}</td>'
+        f"</tr>"
+    )
+
+
 def _quant_table(results: list[dict]) -> str:
-    rows = [r for r in results if r.get("quant_mode") not in ("kv-analysis",)]
+    rows = [r for r in results if r.get("quant_mode") not in ("kv-analysis",) and not r.get("size_sweep")]
 
     def sort_key(r):
         gpu = r.get("_gpu", "")
@@ -771,8 +863,9 @@ def _quant_table(results: list[dict]) -> str:
             "Output tokens/sec across 8 simultaneous requests. Higher batch sizes better utilise GPU parallelism."
         ),
         "MMLU": (
-            "Massive Multitask Language Understanding — accuracy on 50 questions across"
-            " CS, ML, systems, and statistics. Higher is better. Quantifies quality loss from compression."
+            "Accuracy on a 50-question CS/ML-domain subset (computer science, ML, systems, statistics)."
+            " Not the full 57-subject MMLU benchmark — published 5-shot general MMLU for Llama-3.1-8B is ~66-68%."
+            " Higher is better. Quantifies quality loss from compression within this domain."
         ),
         "MFU%": (
             "Model FLOPs Utilization — achieved throughput as % of GPU's theoretical peak."
@@ -1166,6 +1259,12 @@ def generate(results_dir: Path, output: Path) -> None:
     c_mmlu = _chart_mmlu_ppl(quant)
     c_scale = _chart_batch_scaling(quant)
     c_poisson = _chart_poisson(poisson)
+    c_energy = _chart_energy(quant)
+    _sweep_rows = [rr for rr in quant if rr.get("size_sweep")]
+    _best_tok_j = max(
+        ((rr.get("power") or {}).get("tokens_per_joule", 0) for rr in _sweep_rows),
+        default=0,
+    )
     c_gateway = _chart_gateway_latency(gateway)
     c_loadtest = _chart_load_test(load_tests)
     c_nsight = _chart_nsight_categories(nsight)
@@ -1192,6 +1291,8 @@ def generate(results_dir: Path, output: Path) -> None:
     <a href="#quant">All Quantization Modes</a>
     <a href="#h100">H100 vs A10G</a>
     <a href="#charts">Analysis Charts</a>
+    <a href="#energy">Energy Efficiency</a>
+    <a href="#sizeswp">Size vs Quant</a>
     <div class="nav-group">Gateway</div>
     <a href="#gateway">Tier Benchmark</a>
     <a href="#cache">Prefix Caching</a>
@@ -1225,7 +1326,14 @@ def generate(results_dir: Path, output: Path) -> None:
             f"{_mode_label(best_b8)} · {best_b8.get('_gpu', '?')} · batch-8",
         )
     }
-  {_stat_card("H100 vs A10G", speedup if speedup else "—", "batch-8 speedup · same 94% MMLU", "cyan")}
+  {
+        _stat_card(
+            "H100 vs A10G",
+            speedup if speedup else "—",
+            "fp8 vs vllm · batch-8 · 94% MMLU (CS/ML subset)",
+            "cyan",
+        )
+    }
   {_stat_card("Best MMLU", f"{_fmt((best_mmlu or 0) * 100, 0)}%", f"{_mode_label(best_mmlu_row)} · 50q", "green")}
   {_stat_card("H100 fp8 MFU", f"{_fmt(_mfu(h100_fp8), 1)}%" if h100_fp8 else "—", "memory-bandwidth-bound", "yellow")}
   {_stat_card("Saturation Knee", knee_str, "Poisson arrivals · cheap tier", "orange")}
@@ -1241,7 +1349,9 @@ def generate(results_dir: Path, output: Path) -> None:
 
 <div class="insight">
   <strong>Key finding:</strong> H100 fp8 (hardware-native Hopper FP8 tensor cores) is
-  <strong>{speedup or "8x"} faster</strong> than A10G vllm at batch-8 with <strong>identical 94% MMLU</strong>.
+  <strong>{
+        speedup or "8x"
+    } faster</strong> than A10G vllm at batch-8 with <strong>identical 94% MMLU (CS/ML subset)</strong>.
   A single H100 at $6.45/hr outperforms two A100-80GBs at $8.00/hr combined.
   Note: 8B model uses only 20% of H100's 80GB HBM3.
 </div>
@@ -1306,7 +1416,8 @@ def generate(results_dir: Path, output: Path) -> None:
 <td class="right dim">{cost_str}/hr</td>
 </tr>"""
 
-    html += f"""</tbody>
+    html += (
+        f"""</tbody>
 </table>
 <div class="insight" style="margin-top:1rem">
   <strong>kv-fp8 vs fp8:</strong> kv-fp8 is 28% slower because weights remain in BF16 —
@@ -1360,7 +1471,8 @@ so combining hides intra-GPU mode differences.</p>
   <div class="chart-card">
     <h3>MMLU Accuracy + Perplexity <span style="font-size:0.68rem;font-weight:400">(HF modes only)</span></h3>
     <p style="font-size:var(--fs-micro);color:var(--muted);margin-bottom:0.6rem">
-      MMLU scores cluster near 74-94% — quantization barely affects accuracy at 4-8 bit.
+      MMLU scores on a 50-question CS/ML-domain subset (not the full benchmark; published general MMLU ~66-68%).
+      Scores cluster 74-94% -- quantization barely affects accuracy at 4-8 bit.
       Perplexity (lower = better) reveals subtle degradation: nf4 and gptq add ~0.2 ppl vs fp16.
     </p>
     {_canvas("chartMmlu", c_mmlu, "240px")}
@@ -1377,6 +1489,59 @@ so combining hides intra-GPU mode differences.</p>
   memory-bandwidth-bound (purple in MFU charts). The bottleneck is loading model weights from HBM
   on every decode step — not attention. H100's HBM3 (3.35 TB/s vs A10G's 0.60 TB/s) explains
   the 8x throughput difference at nearly identical MFU%.
+</div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<section id="energy" class="section">
+<div class="section-title">Energy Efficiency — Tokens per Joule</div>
+<p class="section-sub">
+  Measured via nvidia-smi power polling during inference. Purple bars = size-sweep configs; blue = standard 8B modes.
+  Higher tokens/joule = more compute per watt.
+</p>
+<div class="chart-card">
+  <h3>Tokens / Joule + Mean Power Draw (W)
+<span style="font-size:0.68rem;font-weight:400">(modes with power data only)</span></h3>
+  <p style="font-size:var(--fs-micro);color:var(--muted);margin-bottom:0.6rem">
+    3B-fp16 leads at 0.32 tok/J — smaller weights load faster per decode step, spending less energy per token.
+    GPTQ (0.27) is the most efficient full 8B mode: INT4 weights halve bandwidth pressure vs fp16.
+  </p>
+  {_canvas("chartEnergy", c_energy, "280px")}
+</div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<section id="sizeswp" class="section">
+<div class="section-title">Size vs. Quantization Sweep</div>
+<p class="section-sub">
+  Compares model sizes at roughly equal VRAM (~6-8 GB). The key question: is a smaller model at fp16
+  better than a larger model quantized to fit the same budget?
+</p>
+<div class="card">
+<table>
+<thead><tr>
+  {_th("Config", "Model size and precision. Equal-VRAM pairs reveal the size vs. quant tradeoff.")}
+  {_th("Batch-1", "Output tok/s with a single request.", True)}
+  {_th("Batch-8", "Output tok/s across 8 simultaneous requests.", True)}
+  {_th("MMLU", "Accuracy on 50-question CS/ML-domain subset.", True)}
+  {_th("VRAM", "Peak GPU memory for model weights (MB).", True)}
+  {_th("Tok / J", "Tokens generated per joule of GPU energy. Higher = more efficient.", True)}
+</tr></thead>
+<tbody>"""
+        + "".join(
+            _size_sweep_row(r, _best_tok_j)
+            for r in sorted(
+                [rr for rr in quant if rr.get("size_sweep")],
+                key=lambda r: r.get("size_sweep_label", ""),
+            )
+        )
+        + f"""</tbody>
+</table>
+</div>
+<div class="insight">
+  <strong>3B-fp16 vs 8B-nf4 at equal VRAM (~6-8 GB):</strong>
+  3B-fp16 is ~2x faster and 78% more energy-efficient but has 15% lower MMLU.
+  Choose 3B for latency/energy-constrained workloads; 8B-nf4 when answer quality matters.
 </div>
 </section>
 
@@ -1475,6 +1640,7 @@ so combining hides intra-GPU mode differences.</p>
 <script>{_JS}</script>
 </body>
 </html>"""
+    )
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html)

@@ -87,6 +87,7 @@ _ALL_MODES = (
     "cpu-q4km",
     "cpu-q5km",
     "cpu-q8_0",
+    "size-sweep",
 )
 
 # Modes that require multiple GPUs (dispatched to run_tp_benchmark instead of run_quant_benchmark)
@@ -103,6 +104,33 @@ _TGI_MODES = frozenset({"tgi"})
 
 # Modes that require the TensorRT-LLM engine build step
 _TRTLLM_MODES = frozenset({"trtllm"})
+
+# Size-vs-quant sweep: runs multiple model/quant combinations to compare tradeoffs
+# across model sizes at equal VRAM, not just quant formats within one size.
+_SIZE_SWEEP_MODES = frozenset({"size-sweep"})
+
+# Each entry: (model_id, quant_mode, label, model_cfg_override)
+# Pairs chosen to be roughly VRAM-comparable: 3B-fp16 ≈ 8B-nf4 ≈ 6 GB
+_SIZE_SWEEP_CONFIGS: list[dict] = [
+    {
+        "model_id": "unsloth/Llama-3.2-3B-Instruct",
+        "quant_mode": "fp16",
+        "size_sweep_label": "3B-fp16",
+        "model_cfg": {"num_params": 3_000_000_000, "num_layers": 28, "seq_len": 512, "hidden": 3072},
+    },
+    {
+        "model_id": "unsloth/Meta-Llama-3.1-8B-Instruct",
+        "quant_mode": "nf4",
+        "size_sweep_label": "8B-nf4",
+        "model_cfg": {"num_params": 8_000_000_000, "num_layers": 32, "seq_len": 512, "hidden": 4096},
+    },
+    {
+        "model_id": "unsloth/Meta-Llama-3.1-8B-Instruct",
+        "quant_mode": "fp16",
+        "size_sweep_label": "8B-fp16",
+        "model_cfg": {"num_params": 8_000_000_000, "num_layers": 32, "seq_len": 512, "hidden": 4096},
+    },
+]
 
 # Default GGUF repo for cpu-llama-cpp modes; override via GGUF_REPO env var
 _DEFAULT_GGUF_REPO = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
@@ -312,6 +340,7 @@ _image = (
     )
     # gptqmodel: maintained successor to auto-gptq, no optimum dependency
     .pip_install("gptqmodel>=1.0.0")
+    .pip_install("pynvml>=11.0.0")
     # flash-attn binary has frequent ABI issues; use torch SDPA backend instead (same kernels on A10G)
     .env(
         {
@@ -528,6 +557,10 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
         }
     else:
         result["memory"] = _measure_memory(model_vram_mb)
+    # Start power-draw polling before inference; terminate after all inference calls.
+    _pwr_proc, _pwr_samples = _poll_power_draw()
+    _pwr_t0 = time.perf_counter()
+
     result["latency"] = _measure_latency(model, tokenizer, device, assistant_model=draft_model)
     result["throughput"] = _measure_throughput(model, tokenizer, device, assistant_model=draft_model)
     # Speculative decoding's assisted_generation does not support batched inputs in transformers
@@ -535,6 +568,14 @@ def run_quant_benchmark(quant_mode: str, model_id: str = "") -> dict[str, Any]:
         result["batch_throughput"] = _measure_batch_throughput(model, tokenizer, device)
     result["perplexity"] = _measure_perplexity(model, tokenizer, device)
     result["quality"] = _measure_quality(model, tokenizer, device)
+
+    _pwr_proc.terminate()
+    _pwr_elapsed = time.perf_counter() - _pwr_t0
+    _output_tokens = int((result.get("throughput") or {}).get("output_tokens_per_sec", 0) * _pwr_elapsed)
+    pwr = _power_metrics(_pwr_samples, _output_tokens, _pwr_elapsed)
+    if pwr:
+        result["power"] = pwr
+
     if quant_mode in _MODE_NOTES:
         result["notes"] = _MODE_NOTES[quant_mode]
 
@@ -1079,6 +1120,62 @@ def _measure_memory(model_vram_mb: float) -> dict[str, float]:
     }
 
 
+class _PowerSampler:
+    """Polls GPU power draw via pynvml in a background thread."""
+
+    def __init__(self) -> None:
+        import threading
+
+        import pynvml
+
+        pynvml.nvmlInit()
+        self._handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        self._pynvml = pynvml
+        self.samples: list[float] = []
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        import logging
+
+        while not self._stop.is_set():
+            try:
+                mw = self._pynvml.nvmlDeviceGetPowerUsage(self._handle)
+                self.samples.append(mw / 1000.0)  # milliwatts → watts
+            except Exception as exc:
+                logging.getLogger(__name__).debug("pynvml power read failed: %s", exc)
+            self._stop.wait(1.0)
+
+    def terminate(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=2.0)
+
+
+def _poll_power_draw() -> tuple[_PowerSampler, list[float]]:
+    """Start background GPU power sampling via pynvml.
+
+    Returns (sampler, samples_list). Call sampler.terminate() when done.
+    samples_list is populated in-place by a background thread.
+    """
+    sampler = _PowerSampler()
+    return sampler, sampler.samples
+
+
+def _power_metrics(samples: list[float], output_tokens: int, elapsed_s: float) -> dict[str, float]:
+    """Summarise power samples into watt/joule metrics."""
+    if not samples:
+        return {}
+    mean_w = statistics.mean(samples)
+    total_j = mean_w * elapsed_s
+    tok_per_joule = output_tokens / total_j if total_j > 0 else 0.0
+    return {
+        "mean_power_w": round(mean_w, 1),
+        "total_energy_j": round(total_j, 1),
+        "tokens_per_joule": round(tok_per_joule, 2),
+    }
+
+
 def _measure_latency(model: Any, tokenizer: Any, device: str, assistant_model: Any = None) -> dict[str, Any]:
     """Latency over _BENCH_PROMPTS x 5 iterations, plus TTFT."""
     import torch
@@ -1235,7 +1332,10 @@ def _measure_perplexity(model: Any, tokenizer: Any, device: str) -> dict[str, fl
 
     dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test", revision=_DATASET_REVISION)
     text = "\n\n".join(dataset["text"])  # type: ignore[index]
-    encodings = tokenizer(text, return_tensors="pt")
+    # Pre-slice text so tokenization stays within model_max_length. ~8 chars/token is conservative;
+    # we only need MAX_LEN tokens so this avoids the "longer than max_length" warning without
+    # changing which tokens are evaluated (still the first MAX_LEN of the joined corpus).
+    encodings = tokenizer(text[: MAX_LEN * 8], return_tensors="pt")
     seq_len = min(encodings.input_ids.size(1), MAX_LEN)
     input_ids = encodings.input_ids[:, :seq_len].to(device)
 
@@ -1944,6 +2044,10 @@ def main(
         continuous-batching: Runs on the specified --gpu using the async vLLM engine.
         kv-fp8:              vLLM with fp8 KV cache quantization (weights stay fp16).
         kv-analysis:         Context-length sweep measuring KV cache VRAM (fp16 vs fp8).
+        size-sweep:          Runs _SIZE_SWEEP_CONFIGS in parallel — compares model sizes
+                             at roughly equal VRAM (3B-fp16, 8B-nf4, 8B-fp16). Reports
+                             tps, MMLU, VRAM, and tokens/joule side-by-side. Results are
+                             stored in the same JSON under quant_mode "size-sweep/<label>".
     """
     selected = [m.strip() for m in modes.split(",") if m.strip()]
     invalid = [m for m in selected if m not in _ALL_MODES]
@@ -1960,10 +2064,15 @@ def main(
     print("Results will stream in as each mode completes (parallel execution).\n")
 
     # Partition modes by required compute type
-    gpu_modes = [m for m in selected if m not in _MULTI_GPU_MODES and m not in _CPU_MODES and m not in _TGI_MODES]
+    gpu_modes = [
+        m
+        for m in selected
+        if m not in _MULTI_GPU_MODES and m not in _CPU_MODES and m not in _TGI_MODES and m not in _SIZE_SWEEP_MODES
+    ]
     tp_modes = [m for m in selected if m in _MULTI_GPU_MODES]
     cpu_modes = [m for m in selected if m in _CPU_MODES]
     tgi_modes = [m for m in selected if m in _TGI_MODES]
+    size_sweep = "size-sweep" in selected
 
     if gpu not in _BENCH_FN_FOR_GPU:
         raise SystemExit(f"Unsupported --gpu {gpu!r}. Valid: {list(_BENCH_FN_FOR_GPU)}")
@@ -2028,6 +2137,36 @@ def main(
     # TGI mode (single GPU, dedicated image)
     if tgi_modes:
         _record(run_tgi_benchmark.remote(model_id=effective_model))
+
+    # Size-vs-quant sweep — runs _SIZE_SWEEP_CONFIGS in parallel; each uses its own model/quant pair
+    if size_sweep:
+        print("\nRunning size-vs-quant sweep …")
+        sweep_modes = [cfg["quant_mode"] for cfg in _SIZE_SWEEP_CONFIGS]
+        sweep_models = [cfg["model_id"] for cfg in _SIZE_SWEEP_CONFIGS]
+        for result, cfg in zip(
+            bench_fn.map(sweep_modes, sweep_models, order_outputs=True, return_exceptions=True),
+            _SIZE_SWEEP_CONFIGS,
+            strict=False,
+        ):
+            if isinstance(result, Exception):
+                print(f"  [FAILED size-sweep {cfg['size_sweep_label']}] {result}")
+                continue
+            # Tag result with the sweep label so it's distinguishable in the JSON
+            result["size_sweep_label"] = cfg["size_sweep_label"]
+            result["size_sweep"] = True
+            # Override quant_mode to a unique key so it doesn't collide with standalone modes
+            result["quant_mode"] = f"size-sweep/{cfg['size_sweep_label']}"
+            model_cfg = cfg.get("model_cfg", _MODEL_CFG_8B)
+            build_flops_funnel(
+                result, model_cfg=model_cfg, gpu_name=result.get("gpu", gpu), quant_mode=cfg["quant_mode"]
+            )
+            new_results.append(result)
+            label = cfg["size_sweep_label"]
+            tps = (result.get("throughput") or {}).get("output_tokens_per_sec", 0)
+            acc = (result.get("quality") or {}).get("mmlu_accuracy", float("nan"))
+            mem = (result.get("memory") or {}).get("model_weights_mb", 0)
+            pwr = (result.get("power") or {}).get("tokens_per_joule", float("nan"))
+            print(f"  [size-sweep {label:12s}] tps={tps:.0f}  mmlu={acc:.0%}  vram={mem:.0f}MB  tok/J={pwr:.1f}")
 
     # CPU/GGUF modes — one call sweeps all four quant levels; filter to what was requested
     if cpu_modes:
